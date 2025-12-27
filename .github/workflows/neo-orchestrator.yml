@@ -8,6 +8,7 @@ on:
 jobs:
   neo:
    name: Neo Decision Engine
+   if: vars.NEO_AUTOMATION_ENABLED == 'true'
    runs-on: ubuntu-latest
    outputs:
     decision: ${{ steps.decide.outputs.decision }}
@@ -24,8 +25,9 @@ jobs:
         echo "Files changed:"
         echo "$FILES_CHANGED"
 
-        if echo "$FILES_CHANGED" | grep -E '\.(md|txt)$' \
-        && ! echo "$FILES_CHANGED" | grep -vE '\.(md|txt)$'; then
+        if [ -n "$FILES_CHANGED" ] && \
+           echo "$FILES_CHANGED" | grep -qiE '\.(md|txt)$' && \
+           ! echo "$FILES_CHANGED" | grep -qiEv '\.(md|txt)$'; then
          echo "decision=SKIP_AUTOMATION" >> $GITHUB_OUTPUT
            else
                echo "decision=PROCEED" >> $GITHUB_OUTPUT
@@ -34,7 +36,7 @@ jobs:
   neo_labels:
     name: Neo Auto Labels
     needs: neo
-    if: needs.neo.outputs.decision == 'PROCEED'
+    if: vars.NEO_AUTOMATION_ENABLED == 'true' && needs.neo.outputs.decision == 'PROCEED'
     runs-on: ubuntu-latest
 
     permissions:
@@ -47,11 +49,12 @@ jobs:
       - name: Determine labels
         id: labels
         run: |
+          git fetch origin main 
           FILES=$(git diff --name-only origin/main...HEAD)
 
           LABELS=""
 
-          if echo "$FILES" | grep -qE '(auth|security|env|config)'; then
+          if echo "$FILES" | grep -qE '(^|/)(auth|security|env|config)(/|\.|$)'; then
             LABELS="$LABELS security-risk"
           fi
 
@@ -84,26 +87,30 @@ jobs:
             }
 
   neo_cost_gate:
-    name: Neo Cost Gate
-    needs: neo
-    runs-on: ubuntu-latest
-    outputs:
-      allowed: ${{ steps.cost.outputs.allowed }}
+      name: Neo Cost Gate (placeholder)
+      needs: neo
+      runs-on: ubuntu-latest
+      
+      outputs:
+       allowed: ${{ steps.cost.outputs.allowed }}
+       
+      steps:
+          - id: cost
+            name: Evaluate cost policy (placeholder)
+            run: |
+             echo "Neo Cost Gate: placeholder — no enforcement active."
 
-    steps:
-      - id: cost
-        run: |
-          if [ "${{ vars.NEO_AUTOMATION_ENABLED }}" = "true" ]; then
-            echo "allowed=true" >> $GITHUB_OUTPUT
-          else
-            echo "allowed=false" >> $GITHUB_OUTPUT
-          fi
-
-
+             if [ "${{ vars.NEO_AUTOMATION_ENABLED }}" = "true" ]; then
+              echo "allowed=true" >> "$GITHUB_OUTPUT"
+              echo "Cost gate PASSED (automation enabled)."
+              else
+              echo "allowed=false" >> "$GITHUB_OUTPUT"
+              echo "Cost gate FAILED (automation disabled)."
+             fi
 
   architect_review:
     name: Architect Review
-    needs: neo
+    needs: [neo, neo_cost_gate]
     if: needs.neo.outputs.decision == 'PROCEED' && needs.neo_cost_gate.outputs.allowed == 'true'
     uses: ./.github/workflows/codex-guardian.yml
     secrets: inherit
@@ -130,7 +137,7 @@ jobs:
 
   security_review:
     name: Security Review
-    needs: neo
+    needs: [neo, neo_cost_gate]
     if: needs.neo.outputs.decision == 'PROCEED' && needs.neo_cost_gate.outputs.allowed == 'true'
     uses: ./.github/workflows/codex-guardian.yml
     secrets: inherit
@@ -157,7 +164,7 @@ jobs:
 
   qa_review:
     name: QA Review
-    needs: neo
+    needs: [neo, neo_cost_gate]
     if: needs.neo.outputs.decision == 'PROCEED' && needs.neo_cost_gate.outputs.allowed == 'true'
     uses: ./.github/workflows/codex-guardian.yml
     secrets: inherit
@@ -185,7 +192,8 @@ jobs:
 
   neo_gate:
     name: Neo Merge Gate (critical-only)
-    needs: [architect_review, security_review, qa_review]
+    needs: [neo, neo_cost_gate, architect_review, security_review, qa_review]
+    if: needs.neo.outputs.decision == 'PROCEED' && needs.neo_cost_gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
 
     permissions:
@@ -221,7 +229,8 @@ jobs:
  
   neo_consensus:
         name: Neo Consensus
-        needs: [architect_review, security_review, qa_review]
+        needs: [neo, neo_cost_gate, architect_review, security_review, qa_review]
+        if: vars.NEO_AUTOMATION_ENABLED == 'true' && needs.neo.outputs.decision == 'PROCEED'
         runs-on: ubuntu-latest
 
         permissions:
