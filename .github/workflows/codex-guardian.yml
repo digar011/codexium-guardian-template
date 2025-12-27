@@ -2,7 +2,7 @@ name: Codex Guardian Review
 
 on:
   workflow_call:
-    inputs:
+    inputs: 
       model:
         required: false
         type: string
