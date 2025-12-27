@@ -189,6 +189,67 @@ jobs:
         Notes:
         - concise findings
 
+  neo_aggregate:
+    name: Neo Aggregate Signals
+    needs: [architect_review, security_review, qa_review]
+    runs-on: ubuntu-latest
+    outputs:
+      final_severity: ${{ steps.aggregate.outputs.final_severity }}
+      final_confidence: ${{ steps.aggregate.outputs.final_confidence }}
+    steps:
+    - name: Aggregate severity and confidence
+      id: aggregate
+      run: |
+        ARCH_SEV="${{ needs.architect_review.outputs.severity }}"
+        SEC_SEV="${{ needs.security_review.outputs.severity }}"
+        QA_SEV="${{ needs.qa_review.outputs.severity }}"
+
+        ARCH_CONF="${{ needs.architect_review.outputs.confidence }}"
+        SEC_CONF="${{ needs.security_review.outputs.confidence }}"
+        QA_CONF="${{ needs.qa_review.outputs.confidence }}"
+
+        rank_sev () {
+          case "$1" in
+            critical) echo 3 ;;
+            warn) echo 2 ;;
+            info) echo 1 ;;
+            *) echo 1 ;;
+          esac
+        }
+
+        rank_conf () {
+          case "$1" in
+            high) echo 3 ;;
+            medium) echo 2 ;;
+            low) echo 1 ;;
+            *) echo 1 ;;
+          esac
+        }
+
+        FINAL_SEV="info"
+        MAX_SEV=0
+        for s in "$ARCH_SEV" "$SEC_SEV" "$QA_SEV"; do
+          r=$(rank_sev "$s")
+          if [ "$r" -gt "$MAX_SEV" ]; then
+            MAX_SEV=$r
+            FINAL_SEV=$s
+          fi
+        done
+
+        FINAL_CONF="high"
+        MIN_CONF=999
+        for c in "$ARCH_CONF" "$SEC_CONF" "$QA_CONF"; do
+          r=$(rank_conf "$c")
+          if [ "$r" -lt "$MIN_CONF" ]; then
+            MIN_CONF=$r
+            FINAL_CONF=$c
+          fi
+        done
+
+        echo "final_severity=$FINAL_SEV" >> "$GITHUB_OUTPUT"
+        echo "final_confidence=$FINAL_CONF" >> "$GITHUB_OUTPUT"
+
+
 
   neo_gate:
     name: Neo Merge Gate (critical-only)
@@ -277,7 +338,7 @@ jobs:
  
   neo_consensus:
         name: Neo Consensus
-        needs: [neo, neo_cost_gate, architect_review, security_review, qa_review]
+        needs: [neo, neo_cost_gate, neo_aggregate, architect_review, security_review, qa_review]
         if: vars.NEO_AUTOMATION_ENABLED == 'true' && needs.neo.outputs.decision == 'PROCEED'
         runs-on: ubuntu-latest
 
