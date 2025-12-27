@@ -297,3 +297,25 @@ jobs:
                body: `**Neo consensus:** Review completed. See above notes before merging.`
               })
    
+        - name: Write Neo decision memory
+          if: always()
+          env:
+             GITHUB_TOKEN: ${{ github.token }}
+             NEO_DECISION_JSON: |
+              {
+              "pr": "${{ github.event.pull_request.number }}",
+              "commit": "${{ github.sha }}",
+              "decision": "${{ needs.neo.outputs.decision }}",
+              "severity": "${{ needs.neo.outputs.severity || 'unknown' }}",
+              "confidence": "${{ needs.neo.outputs.confidence || 'unknown' }}",
+              "model": "gpt-4.1",
+              "timestamp": "${{ github.run_started_at }}"
+               }
+          run: |
+            echo "## Neo Decision Memory" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            echo "$NEO_DECISION_JSON" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+ 
+            gh pr comment ${{ github.event.pull_request.number }} \
+            --body "## 🧠 Neo Decision Memory\n\`\`\`json\n$NEO_DECISION_JSON\n\`\`\`"
