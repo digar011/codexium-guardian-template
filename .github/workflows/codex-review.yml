@@ -1,4 +1,4 @@
-name: Codex PR review
+name: Codex PR Review
 
 on:
   pull_request:
@@ -13,14 +13,16 @@ jobs:
     name: Generate Codex review
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
+
     permissions:
       contents: read
+
     outputs:
-      final_message: ${{ steps.run_codex.outputs["final-message"] }}
+      final_message: ${{ steps.export_final.outputs.final_message }}
 
     steps:
       - name: Checkout merge commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
 
@@ -55,11 +57,19 @@ jobs:
             ${{ github.event.pull_request.title }}
             ${{ github.event.pull_request.body }}
 
+      - name: Export Codex final message
+        id: export_final
+        run: |
+          echo "final_message<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${{ steps.run_codex.outputs.text }}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
   post_feedback:
     name: Post Codex review
     runs-on: ubuntu-latest
     needs: codex
     if: needs.codex.outputs.final_message != ''
+
     permissions:
       issues: write
       pull-requests: write
@@ -76,5 +86,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body: process.env.CODEX_FINAL_MESSAGE,
-            });
+              body: process.env.CODEX_FINAL_MESSAGE
+            })
