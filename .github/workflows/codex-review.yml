@@ -16,6 +16,7 @@ jobs:
 
     permissions:
       contents: read
+      pull-requests: write
 
     outputs:
       final_message: ${{ steps.export_final.outputs.final_message }}

@@ -4,35 +4,29 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+concurrency:
+  group: codex-review-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
-  codex-review:
+  codex:
     name: Generate Codex review
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Decide whether to run Codex review
-        id: decide
-        run: |
-          # Default to skip-safe
-          echo "run_review=false" >> $GITHUB_OUTPUT
-
-          # Example condition — adjust if needed
-          if git diff --name-only origin/main...HEAD | grep -qE '\.(js|ts|yml|yaml)$'; then
-            echo "run_review=true" >> $GITHUB_OUTPUT
-          fi
-
       - name: Run Codex review
-        if: steps.decide.outputs.run_review == 'true'
-        run: |
-          echo "Running Codex review logic..."
-          # your real logic here
-          echo "Codex review completed"
-
-      - name: No-op success (when skipped)
-        if: steps.decide.outputs.run_review != 'true'
-        run: |
-          echo "Codex review intentionally skipped — reporting success"
-
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: |
+            Review this pull request.
+            Focus on correctness, security, performance, and tests.
