@@ -1,4 +1,4 @@
-name: Codex Guardian PR Review
+name: Codex PR Review
 
 on:
   pull_request:
