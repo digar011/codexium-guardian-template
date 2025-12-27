@@ -1,0 +1,25 @@
+name: Codex Guardian Review
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        required: false
+        type: string
+        default: gpt-4.1
+    secrets:
+      OPENAI_API_KEY:
+        required: true
+jobs:
+  codex:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Codex review
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          model: ${{ inputs.model }}
+          prompt: |
+            Review this pull request and provide actionable feedback.
