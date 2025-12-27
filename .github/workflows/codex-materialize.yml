@@ -34,13 +34,19 @@ jobs:
   materialize:
     name: Materialize Codex Output
     runs-on: ubuntu-latest
-    if: env.NEO_AUTOMATION_ENABLED == 'true'
 
     steps:
-      # 1️⃣ Checkout repository
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
+    - name: Guardian kill switch
+    run: |
+          if [ "${NEO_AUTOMATION_ENABLED}" != "true" ]; then
+            echo "❌ NEO automation is disabled. Exiting."
+            exit 1
+          fi
+          echo "✅ NEO automation enabled. Continuing."
+
+      name: Checkout repository
+      uses: actions/checkout@v4
+      with:
           persist-credentials: true
           fetch-depth: 0
 
