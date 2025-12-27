@@ -29,19 +29,25 @@ jobs:
     runs-on: ubuntu-latest
 
     # 🧯 Global safety switch
-    if: vars.NEO_AUTOMATION_ENABLED == 'true'
+    env:
+  NEO_AUTOMATION_ENABLED: ${{ vars.NEO_AUTOMATION_ENABLED }}
 
-    steps:
-      # 1️⃣ Checkout repository with write token
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-          fetch-depth: 0
+  jobs:
+         materialize:
+             if: env.NEO_AUTOMATION_ENABLED == 'true'
+
+
+             steps:
+       # 1️⃣ Checkout repository with write token
+               - name: Checkout repository
+             uses: actions/checkout@v4
+               with:
+               persist-credentials: true
+               fetch-depth: 0
 
       # 2️⃣ Validate JSON payload early
-      - name: Validate JSON payload
-        run: |
+              - name: Validate JSON payload
+         run: |
           echo '${{ inputs.files }}' | jq type > /dev/null
 
       # 3️⃣ Create target directory
