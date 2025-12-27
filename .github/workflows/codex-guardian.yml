@@ -2,7 +2,10 @@ name: Codex Guardian Review
 
 on:
   workflow_call:
-    inputs: 
+    inputs:
+      prompt:
+        required: true
+        type: string
       model:
         required: false
         type: string
@@ -10,6 +13,7 @@ on:
     secrets:
       OPENAI_API_KEY:
         required: true
+
     outputs:
       review:
         description: "Codex Guardian review output"
