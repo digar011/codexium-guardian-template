@@ -4,6 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+# 🧯 Cost safety: prevent duplicate OpenAI calls
 concurrency:
   group: codex-review-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -12,21 +13,37 @@ jobs:
   codex:
     name: Generate Codex review
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
 
+    # 🧠 Kill switch (global cost control)
+    if: vars.NEO_AUTOMATION_ENABLED == 'true' && github.event.pull_request.draft == false
+
+    # 🔐 Minimum required permissions
     permissions:
       contents: read
       pull-requests: write
       issues: write
 
+    # ⏱️ Hard stop to prevent runaway cost
+    timeout-minutes: 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run Codex review
+      - name: Run Codex review (fail-open)
+        id: codex
         uses: openai/codex-action@v1
+        continue-on-error: true   # 🚨 NEVER block merge
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt: |
-            Review this pull request.
-            Focus on correctness, security, performance, and tests.
+            Review ONLY the changes in this pull request.
+
+            Focus on:
+            - Correctness
+            - Security
+            - Performance
+            - Missing or inadequate tests
+
+            Be concise and actionable.
+
