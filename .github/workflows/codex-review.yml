@@ -1,8 +1,10 @@
 name: Codex PR Review
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_call:
+    secrets:
+      OPENAI_API_KEY:
+        required: true
 
 concurrency:
   group: codex-review-${{ github.event.pull_request.number || github.run_id }}
