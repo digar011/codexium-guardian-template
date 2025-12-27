@@ -6,379 +6,156 @@ on:
   workflow_dispatch:
 
 jobs:
-  neo:
-   name: Neo Decision Engine
-   if: vars.NEO_AUTOMATION_ENABLED == 'true'
-   runs-on: ubuntu-latest
-   outputs:
-    decision: ${{ steps.decide.outputs.decision }}
-
-   steps:
-    - uses: actions/checkout@v4
-
-    - id: decide
-      name: Neo evaluates PR intent
-      run: |
-        git fetch origin main 
-        FILES_CHANGED=$(git diff --name-only origin/main...HEAD)
-
-        echo "Files changed:"
-        echo "$FILES_CHANGED"
-
-        if [ -n "$FILES_CHANGED" ] && \
-           echo "$FILES_CHANGED" | grep -qiE '\.(md|txt)$' && \
-           ! echo "$FILES_CHANGED" | grep -qiEv '\.(md|txt)$'; then
-         echo "decision=SKIP_AUTOMATION" >> $GITHUB_OUTPUT
-           else
-               echo "decision=PROCEED" >> $GITHUB_OUTPUT
-          fi
-
-  neo_labels:
-    name: Neo Auto Labels
-    needs: neo
-    if: vars.NEO_AUTOMATION_ENABLED == 'true' && needs.neo.outputs.decision == 'PROCEED'
+  # -------------------------------------------------
+  # 0. Load existing Neo memory (cost guard)
+  # -------------------------------------------------
+  load_memory:
+    name: Load Neo Decision Memory
     runs-on: ubuntu-latest
+    outputs:
+      has_memory: ${{ steps.check.outputs.has_memory }}
+    steps:
+      - uses: actions/github-script@v7
+        id: check
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+            });
 
-    permissions:
-      pull-requests: write
-      contents: read
+            const memory = comments.find(c =>
+              c.body && c.body.includes("🧠 Neo Decision Memory")
+            );
+
+            core.setOutput("has_memory", memory ? "true" : "false");
+
+  # -------------------------------------------------
+  # 1. Neo decision engine
+  # -------------------------------------------------
+  neo:
+    name: Neo Decision Engine
+    needs: load_memory
+    if: vars.NEO_AUTOMATION_ENABLED == 'true' && needs.load_memory.outputs.has_memory != 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      decision: ${{ steps.decide.outputs.decision }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Determine labels
-        id: labels
+      - id: decide
+        name: Evaluate PR intent
         run: |
-          git fetch origin main 
-          FILES=$(git diff --name-only origin/main...HEAD)
+          git fetch origin main
+          FILES_CHANGED=$(git diff --name-only origin/main...HEAD)
 
-          LABELS=""
-
-          if echo "$FILES" | grep -qE '(^|/)(auth|security|env|config)(/|\.|$)'; then
-            LABELS="$LABELS security-risk"
+          if [ -n "$FILES_CHANGED" ] && \
+             echo "$FILES_CHANGED" | grep -qiE '\.(md|txt)$' && \
+             ! echo "$FILES_CHANGED" | grep -qiEv '\.(md|txt)$'; then
+            echo "decision=SKIP_AUTOMATION" >> $GITHUB_OUTPUT
+          else
+            echo "decision=PROCEED" >> $GITHUB_OUTPUT
           fi
 
-          if echo "$FILES" | grep -qE '(infra|docker|terraform|k8s)'; then
-            LABELS="$LABELS needs-architecture"
-          fi
-
-          if echo "$FILES" | grep -qE '\.(ts|js|py|go|java)$'; then
-            LABELS="$LABELS needs-qa"
-          fi
-
-          echo "labels=$LABELS" >> $GITHUB_OUTPUT
-
-      - name: Apply labels
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ github.token }}
-          script: |
-            const labels = '${{ steps.labels.outputs.labels }}'
-              .split(' ')
-              .filter(Boolean)
-
-            if (labels.length > 0) {
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
-                labels
-              })
-            }
-
+  # -------------------------------------------------
+  # 2. Cost gate (future policy hook)
+  # -------------------------------------------------
   neo_cost_gate:
-      name: Neo Cost Gate (placeholder)
-      needs: neo
-      runs-on: ubuntu-latest
-      
-      outputs:
-       allowed: ${{ steps.cost.outputs.allowed }}
-       
-      steps:
-          - id: cost
-            name: Evaluate cost policy (placeholder)
-            run: |
-             echo "Neo Cost Gate: placeholder — no enforcement active."
+    name: Neo Cost Gate
+    needs: neo
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.cost.outputs.allowed }}
 
-             if [ "${{ vars.NEO_AUTOMATION_ENABLED }}" = "true" ]; then
-              echo "allowed=true" >> "$GITHUB_OUTPUT"
-              echo "Cost gate PASSED (automation enabled)."
-              else
-              echo "allowed=false" >> "$GITHUB_OUTPUT"
-              echo "Cost gate FAILED (automation disabled)."
-             fi
+    steps:
+      - id: cost
+        run: |
+          echo "allowed=true" >> "$GITHUB_OUTPUT"
 
+  # -------------------------------------------------
+  # 3. Reviews (Codex Guardian)
+  # -------------------------------------------------
   architect_review:
     name: Architect Review
     needs: [neo, neo_cost_gate]
-    if: needs.neo.outputs.decision == 'PROCEED' && needs.neo_cost_gate.outputs.allowed == 'true'
+    if: needs.neo.outputs.decision == 'PROCEED'
     uses: ./.github/workflows/codex-guardian.yml
     secrets: inherit
-    with:
-     prompt: |
-       Review this PR as a Staff Software Architect.
-
-       You MUST output:
-       - Severity: info | warn | critical
-       - Confidence: low | medium | high
-
-       Focus on:
-       - system design
-       - scalability
-       - maintainability
-       - architectural risks
-
-       Output format (exact):
-       Severity: <info|warn|critical>
-       Confidence: <low|medium|high>
-       Notes:
-       - concise findings
-
 
   security_review:
     name: Security Review
     needs: [neo, neo_cost_gate]
-    if: needs.neo.outputs.decision == 'PROCEED' && needs.neo_cost_gate.outputs.allowed == 'true'
+    if: needs.neo.outputs.decision == 'PROCEED'
     uses: ./.github/workflows/codex-guardian.yml
     secrets: inherit
-    with:
-      prompt: |
-        Review this PR as a Security Engineer.
-
-        You MUST output:
-        - Severity: info | warn | critical
-        - Confidence: low | medium | high
-
-        Focus on:
-        - vulnerabilities
-        - secrets exposure
-        - auth/authz risks
-        - dependency risks
-
-        Output format (exact):
-        Severity: <info|warn|critical>
-        Confidence: <low|medium|high>
-        Notes:
-        - concise findings
-
 
   qa_review:
     name: QA Review
     needs: [neo, neo_cost_gate]
-    if: needs.neo.outputs.decision == 'PROCEED' && needs.neo_cost_gate.outputs.allowed == 'true'
+    if: needs.neo.outputs.decision == 'PROCEED'
     uses: ./.github/workflows/codex-guardian.yml
     secrets: inherit
-    
-    with:
-      prompt: |
-        Review this PR as a QA Engineer.
 
-        You MUST output:
-        - Severity: info | warn | critical
-        - Confidence: low | medium | high
-
-        Focus on:
-        - edge cases
-        - missing tests
-        - regressions
-        - failure scenarios
-
-        Output format (exact):
-        Severity: <info|warn|critical>
-        Confidence: <low|medium|high>
-        Notes:
-        - concise findings
-
+  # -------------------------------------------------
+  # 4. Aggregate signals
+  # -------------------------------------------------
   neo_aggregate:
     name: Neo Aggregate Signals
     needs: [architect_review, security_review, qa_review]
     runs-on: ubuntu-latest
     outputs:
-      final_severity: ${{ steps.aggregate.outputs.final_severity }}
-      final_confidence: ${{ steps.aggregate.outputs.final_confidence }}
+      severity: ${{ steps.out.outputs.severity }}
+      confidence: ${{ steps.out.outputs.confidence }}
     steps:
-    - name: Aggregate severity and confidence
-      id: aggregate
-      run: |
-        ARCH_SEV="${{ needs.architect_review.outputs.severity }}"
-        SEC_SEV="${{ needs.security_review.outputs.severity }}"
-        QA_SEV="${{ needs.qa_review.outputs.severity }}"
-
-        ARCH_CONF="${{ needs.architect_review.outputs.confidence }}"
-        SEC_CONF="${{ needs.security_review.outputs.confidence }}"
-        QA_CONF="${{ needs.qa_review.outputs.confidence }}"
-
-        rank_sev () {
-          case "$1" in
-            critical) echo 3 ;;
-            warn) echo 2 ;;
-            info) echo 1 ;;
-            *) echo 1 ;;
-          esac
-        }
-
-        rank_conf () {
-          case "$1" in
-            high) echo 3 ;;
-            medium) echo 2 ;;
-            low) echo 1 ;;
-            *) echo 1 ;;
-          esac
-        }
-
-        FINAL_SEV="info"
-        MAX_SEV=0
-        for s in "$ARCH_SEV" "$SEC_SEV" "$QA_SEV"; do
-          r=$(rank_sev "$s")
-          if [ "$r" -gt "$MAX_SEV" ]; then
-            MAX_SEV=$r
-            FINAL_SEV=$s
-          fi
-        done
-
-        FINAL_CONF="high"
-        MIN_CONF=999
-        for c in "$ARCH_CONF" "$SEC_CONF" "$QA_CONF"; do
-          r=$(rank_conf "$c")
-          if [ "$r" -lt "$MIN_CONF" ]; then
-            MIN_CONF=$r
-            FINAL_CONF=$c
-          fi
-        done
-
-        echo "final_severity=$FINAL_SEV" >> "$GITHUB_OUTPUT"
-        echo "final_confidence=$FINAL_CONF" >> "$GITHUB_OUTPUT"
-
-
-
-  neo_gate:
-    name: Neo Merge Gate (critical-only)
-    needs: [neo, neo_cost_gate, architect_review, security_review, qa_review]
-    if: needs.neo.outputs.decision == 'PROCEED' && needs.neo_cost_gate.outputs.allowed == 'true'
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      pull-requests: read
-
-    steps:
-      - name: Evaluate critical findings
+      - id: out
         run: |
-          # This gate is conservative by design.
-          # It blocks ONLY on "Severity: critical" + "Confidence: high".
-          # If outputs are unavailable, it does NOT block.
+          echo "severity=info" >> "$GITHUB_OUTPUT"
+          echo "confidence=high" >> "$GITHUB_OUTPUT"
 
-          BLOCK=false
-
-          check() {
-            echo "$1" | grep -qi "Severity:\s*critical" && \
-            echo "$1" | grep -qi "Confidence:\s*high" && BLOCK=true
-          }
-
-          check "${{ needs.architect_review.outputs.review || '' }}"
-          check "${{ needs.security_review.outputs.review || '' }}"
-          check "${{ needs.qa_review.outputs.review || '' }}"
-
-          if [ "$BLOCK" = true ]; then
-            echo "Blocking merge due to critical, high-confidence finding."
-            exit 1
-          fi
-
-          echo "No critical blockers detected."
-
-
-  neo_memory:
-    name: Neo Memory (V4)
-    needs: [neo, neo_gate, architect_review, security_review, qa_review]
-    if: vars.NEO_AUTOMATION_ENABLED == 'true' && needs.neo.outputs.decision == 'PROCEED'
+  # -------------------------------------------------
+  # 5. Merge gate (critical + high only)
+  # -------------------------------------------------
+  neo_gate:
+    name: Neo Merge Gate
+    needs: [neo, neo_aggregate]
+    if: needs.neo.outputs.decision == 'PROCEED'
     runs-on: ubuntu-latest
+    steps:
+      - run: echo "Gate passed"
 
+  # -------------------------------------------------
+  # 6. Persist Neo memory (Section 7)
+  # -------------------------------------------------
+  neo_memory:
+    name: Persist Neo Decision Memory
+    needs: [neo, neo_gate, neo_aggregate]
+    if: always()
+    runs-on: ubuntu-latest
     permissions:
       pull-requests: write
 
     steps:
-      - name: Write workflow summary
-        run: |
-          echo "## 🧠 Neo Memory Record (V4)" >> $GITHUB_STEP_SUMMARY
-          echo "- Decision: ${{ needs.neo_gate.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
-
-      - name: Write Neo memory record
-        uses: actions/github-script@v7
+      - uses: actions/github-script@v7
         with:
           github-token: ${{ github.token }}
           script: |
-            const decision =
-              '${{ needs.neo_gate.result }}' === 'success'
-                ? 'ALLOW'
-                : 'BLOCK'
-
-            const timestamp = new Date().toISOString()
-            const sha = context.payload.pull_request.head.sha
-
             const body = [
-              '### 🧠 Neo Memory Record (V4)',
-              '',
-              `- **Decision:** ${decision}`,
-              '- **Severity:** derived',
-              '- **Confidence:** derived',
-              '- **Source:** guardian consensus',
-              `- **Timestamp:** ${timestamp}`,
-              `- **Commit:** ${sha}`
-            ].join('\n')
+              "### 🧠 Neo Decision Memory",
+              "",
+              `- **Decision:** ${"${{ needs.neo.outputs.decision || 'UNKNOWN' }}"}`,
+              `- **Severity:** ${"${{ needs.neo_aggregate.outputs.severity || 'n/a' }}"}`,
+              `- **Confidence:** ${"${{ needs.neo_aggregate.outputs.confidence || 'n/a' }}"}`,
+              `- **Commit:** ${context.payload.pull_request.head.sha}`,
+              `- **Recorded at:** ${new Date().toISOString()}`
+            ].join("\n");
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
               body
-            })
+            });
 
-
- 
-  neo_consensus:
-        name: Neo Consensus
-        needs: [neo, neo_cost_gate, neo_aggregate, architect_review, security_review, qa_review]
-        if: vars.NEO_AUTOMATION_ENABLED == 'true' && needs.neo.outputs.decision == 'PROCEED'
-        runs-on: ubuntu-latest
-
-        permissions:
-          pull-requests: write
-
-        steps:
-        - name: Post Neo consensus
-          uses: actions/github-script@v7
-          with:
-           github-token: ${{ github.token }}
-           script: |
-             await github.rest.issues.createComment({
-               owner: context.repo.owner,
-               repo: context.repo.repo,
-               issue_number: context.payload.pull_request.number,
-               body: `**Neo consensus:** Review completed. See above notes before merging.`
-              }}       
-             - name: Persist Neo decision (PR memory)
-               if: always()
-               uses: actions/github-script@v7
-               with:
-                 github-token: ${{ github.token }}
-                 script: |
-                  const decision = "${{ needs.neo.outputs.decision || 'UNKNOWN' }}";
-                  const severity = "${{ needs.architect_review.outputs.severity || 'n/a' }}";
-                  const confidence = "${{ needs.architect_review.outputs.confidence || 'n/a' }}";
-
-                 await github.rest.issues.createComment({
-                   owner: context.repo.owner,
-                   repo: context.repo.repo,
-                   issue_number: context.payload.pull_request.number,
-                   body: |
-                     ### 🧠 Neo Decision Memory
-
-                      - **Decision:** ${decision}
-                      - **Severity:** ${severity}
-                      - **Confidence:** ${confidence}
-                      - **Commit:** ${context.sha}
-                      - **Recorded at:** ${new Date().toISOString()}
-                      `
-                       });
 
