@@ -7,22 +7,31 @@ on:
 
 jobs:
   neo:
-    runs-on: ubuntu-latest
-    outputs:
-      decision: ${{ steps.decide.outputs.decision }}
+   name: Neo Decision Engine
+   runs-on: ubuntu-latest
+   outputs:
+    decision: ${{ steps.decide.outputs.decision }}
 
-    steps:
-      - uses: actions/checkout@v4
+   steps:
+    - uses: actions/checkout@v4
 
-      - name: Decide automation path
-        id: decide
-        run: |
-          FILES_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
-          if [ "$FILES_CHANGED" -gt 10 ]; then
-            echo "decision=RUN_CODEX_FULL" >> $GITHUB_OUTPUT
-          else
-            echo "decision=RUN_CODEX_LIGHT" >> $GITHUB_OUTPUT
+    - id: decide
+      name: Neo evaluates PR intent
+      run: |
+        git fetch origin main 
+        FILES_CHANGED=$(git diff --name-only origin/main...HEAD)
+
+        echo "Files changed:"
+        echo "$FILES_CHANGED"
+
+        if echo "$FILES_CHANGED" | grep -E '\.(md|txt)$' \
+        && ! echo "$FILES_CHANGED" | grep -vE '\.(md|txt)$'; then
+         echo "decision=SKIP_AUTOMATION" >> $GITHUB_OUTPUT
+           else
+               echo "decision=PROCEED" >> $GITHUB_OUTPUT
           fi
+
+
 
   neo_review:
    name: Neo Multi-Perspective Review
