@@ -1,0 +1,37 @@
+name: Codex Materialize Output
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_name:
+        description: "Task identifier (e.g. docs-v4-baseline)"
+        required: true
+      content:
+        description: "Codex-generated content (base64 or raw)"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create docs folder
+        run: mkdir -p docs
+
+      - name: Write files
+        run: |
+          echo "${{ inputs.content }}" > docs/GENERATED.md
+
+      - name: Commit and open PR
+        run: |
+          git config user.name "codexium-bot"
+          git config user.email "bot@codexium.ai"
+          git checkout -b codex/${{ inputs.task_name }}
+          git add docs
+          git commit -m "codex: materialize ${{ inputs.task_name }}"
+          git push origin codex/${{ inputs.task_name }}
