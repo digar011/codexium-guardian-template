@@ -26,7 +26,7 @@ permissions:
   contents: write
   pull-requests: write
 
-# 🔐 Global safety switch (resolved reliably via env)
+# 🔐 Global safety switch (resolved at runtime)
 env:
   NEO_AUTOMATION_ENABLED: ${{ secrets.NEO_AUTOMATION_ENABLED }}
 
@@ -36,17 +36,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Guardian kill switch
-    run: |
+      # 0️⃣ Guardian kill switch (MUST be first)
+      - name: Guardian kill switch
+        run: |
           if [ "${NEO_AUTOMATION_ENABLED}" != "true" ]; then
             echo "❌ NEO automation is disabled. Exiting."
             exit 1
           fi
           echo "✅ NEO automation enabled. Continuing."
 
-      name: Checkout repository
-      uses: actions/checkout@v4
-      with:
+      # 1️⃣ Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
           persist-credentials: true
           fetch-depth: 0
 
@@ -124,4 +126,5 @@ jobs:
             codex
             guardian
             automated
+
 
