@@ -91,13 +91,25 @@ jobs:
     uses: ./.github/workflows/codex-guardian.yml
     secrets: inherit
     with:
-      prompt: |
-        Review this PR as a Staff Software Architect.
-        Focus on:
-        - system design
-        - scalability
-        - maintainability
-        - architectural risks
+     prompt: |
+       Review this PR as a Staff Software Architect.
+
+       You MUST output:
+       - Severity: info | warn | critical
+       - Confidence: low | medium | high
+
+       Focus on:
+       - system design
+       - scalability
+       - maintainability
+       - architectural risks
+
+       Output format (exact):
+       Severity: <info|warn|critical>
+       Confidence: <low|medium|high>
+       Notes:
+       - concise findings
+
 
   security_review:
     name: Security Review
@@ -108,11 +120,23 @@ jobs:
     with:
       prompt: |
         Review this PR as a Security Engineer.
+
+        You MUST output:
+        - Severity: info | warn | critical
+        - Confidence: low | medium | high
+
         Focus on:
         - vulnerabilities
         - secrets exposure
         - auth/authz risks
         - dependency risks
+
+        Output format (exact):
+        Severity: <info|warn|critical>
+        Confidence: <low|medium|high>
+        Notes:
+        - concise findings
+
 
   qa_review:
     name: QA Review
@@ -120,14 +144,27 @@ jobs:
     if: needs.neo.outputs.decision == 'PROCEED'
     uses: ./.github/workflows/codex-guardian.yml
     secrets: inherit
+    
     with:
       prompt: |
         Review this PR as a QA Engineer.
+
+        You MUST output:
+        - Severity: info | warn | critical
+        - Confidence: low | medium | high
+
         Focus on:
         - edge cases
         - missing tests
         - regressions
         - failure scenarios
+
+        Output format (exact):
+        Severity: <info|warn|critical>
+        Confidence: <low|medium|high>
+        Notes:
+        - concise findings
+
 
  
   neo_consensus:
