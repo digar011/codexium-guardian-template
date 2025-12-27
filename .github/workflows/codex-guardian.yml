@@ -16,14 +16,23 @@ on:
 
     outputs:
       review:
-        description: "Codex Guardian review output"
+        description: "Full Codex Guardian review text"
         value: ${{ jobs.codex.outputs.review }}
+      severity:
+        description: "Aggregated severity (info|warn|critical)"
+        value: ${{ jobs.codex.outputs.severity }}
+      confidence:
+        description: "Aggregated confidence (low|medium|high)"
+        value: ${{ jobs.codex.outputs.confidence }}
 
 jobs:
   codex:
     runs-on: ubuntu-latest
+
     outputs:
       review: ${{ steps.export.outputs.review }}
+      severity: ${{ steps.parse.outputs.severity }}
+      confidence: ${{ steps.parse.outputs.confidence }}
 
     steps:
       - uses: actions/checkout@v4
@@ -34,18 +43,38 @@ jobs:
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           model: ${{ inputs.model }}
-          prompt: |
-            Review this pull request.
+          prompt: ${{ inputs.prompt }}
 
-            You MUST output:
-            Severity: info | warn | critical
-            Confidence: low | medium | high
-            Notes:
-            - concise findings
+      # 1️⃣ Parse severity + confidence (FAIL-SAFE)
+      - name: Parse severity and confidence
+        id: parse
+        run: |
+          RESPONSE="${{ steps.codex.outputs.text }}"
 
+          SEVERITY=$(echo "$RESPONSE" | grep -i '^Severity:' | awk '{print tolower($2)}')
+          CONFIDENCE=$(echo "$RESPONSE" | grep -i '^Confidence:' | awk '{print tolower($2)}')
+
+          # Validate severity
+          case "$SEVERITY" in
+            info|warn|critical) ;;
+            *) SEVERITY="info" ;;
+          esac
+
+          # Validate confidence
+          case "$CONFIDENCE" in
+            low|medium|high) ;;
+            *) CONFIDENCE="low" ;;
+          esac
+
+          echo "severity=$SEVERITY" >> "$GITHUB_OUTPUT"
+          echo "confidence=$CONFIDENCE" >> "$GITHUB_OUTPUT"
+
+      # 2️⃣ Export full review (unchanged behavior)
       - name: Export review output
         id: export
         run: |
           echo "review<<EOF" >> "$GITHUB_OUTPUT"
           echo "${{ steps.codex.outputs.text }}" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
+
+    
