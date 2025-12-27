@@ -31,6 +31,50 @@ jobs:
                echo "decision=PROCEED" >> $GITHUB_OUTPUT
           fi
 
+  architect_review:
+    name: Architect Review
+    needs: neo
+    if: needs.neo.outputs.decision == 'PROCEED'
+    uses: ./.github/workflows/codex-guardian.yml
+    secrets: inherit
+    with:
+      prompt: |
+        Review this PR as a Staff Software Architect.
+        Focus on:
+        - system design
+        - scalability
+        - maintainability
+        - architectural risks
+
+  security_review:
+    name: Security Review
+    needs: neo
+    if: needs.neo.outputs.decision == 'PROCEED'
+    uses: ./.github/workflows/codex-guardian.yml
+    secrets: inherit
+    with:
+      prompt: |
+        Review this PR as a Security Engineer.
+        Focus on:
+        - vulnerabilities
+        - secrets exposure
+        - auth/authz risks
+        - dependency risks
+
+  qa_review:
+    name: QA Review
+    needs: neo
+    if: needs.neo.outputs.decision == 'PROCEED'
+    uses: ./.github/workflows/codex-guardian.yml
+    secrets: inherit
+    with:
+      prompt: |
+        Review this PR as a QA Engineer.
+        Focus on:
+        - edge cases
+        - missing tests
+        - regressions
+        - failure scenarios
 
 
   neo_review:
