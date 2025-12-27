@@ -346,25 +346,39 @@ jobs:
           pull-requests: write
 
         steps:
-          - name: Post Neo consensus
-            uses: actions/github-script@v7
-            with:
-               github-token: ${{ github.token }}
-               script: |
-                  const finalSeverity = "${{ needs.neo_aggregate.outputs.final_severity }}";
-      
-                  const body = "### 🔴 Neo Consensus\n\n**Final Severity:** " + finalSeverity + "\n\n_Status computed deterministically by Neo_";
-      
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: context.payload.pull_request.number,
-                   body
-                   });
+        - name: Post Neo consensus
+          uses: actions/github-script@v7
+          with:
+           github-token: ${{ github.token }}
+           script: |
+             await github.rest.issues.createComment({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               issue_number: context.payload.pull_request.number,
+               body: `**Neo consensus:** Review completed. See above notes before merging.`
+              }}       
+             - name: Persist Neo decision (PR memory)
+               if: always()
+               uses: actions/github-script@v7
+               with:
+                 github-token: ${{ github.token }}
+                 script: |
+                  const decision = "${{ needs.neo.outputs.decision || 'UNKNOWN' }}";
+                  const severity = "${{ needs.architect_review.outputs.severity || 'n/a' }}";
+                  const confidence = "${{ needs.architect_review.outputs.confidence || 'n/a' }}";
 
+                 await github.rest.issues.createComment({
+                   owner: context.repo.owner,
+                   repo: context.repo.repo,
+                   issue_number: context.payload.pull_request.number,
+                   body: |
+                     ### 🧠 Neo Decision Memory
 
+                      - **Decision:** ${decision}
+                      - **Severity:** ${severity}
+                      - **Confidence:** ${confidence}
+                      - **Commit:** ${context.sha}
+                      - **Recorded at:** ${new Date().toISOString()}
+                      `
+                       });
 
-
-
-
-   
