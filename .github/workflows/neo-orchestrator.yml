@@ -162,5 +162,31 @@ jobs:
               body
             });
 
+            # -------------------------------------------------
+# 7. Telemetry (Section 9)
+# -------------------------------------------------
+  neo_telemetry:
+    name: Neo Telemetry (V4)
+    needs: [neo, neo_aggregate, load_memory]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+    - name: Emit telemetry record
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ github.token }}
+        script: |
+          const body = [
+            "### 📊 Neo Telemetry (V4)",
+            "",
+            `- **Automation enabled:** ${process.env.NEO_AUTOMATION_ENABLED || 'unknown'}`,
+            `- **Neo ran:** ${{ needs.neo.result == 'success' }}`,
+            `- **Skipped (memory hit):** ${{ needs.load_memory.outputs.has_memory || 'false' }}`,
+            `- **Decision:** ${{ needs.neo.outputs.decision || 'UNKNOWN' }}`,
+
+
 
 
