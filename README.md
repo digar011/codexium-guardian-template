@@ -9,7 +9,7 @@ Reusable GitHub Actions template for AI-powered pull request reviews using Codex
 
 ## How to use
 
-1. Click **Use this template**
+1. Click **Use this template** 
 2. Create a new repository
 3. Add `OPENAI_API_KEY` to repository secrets
 4. Open a pull request — Codex Guardian runs automatically
