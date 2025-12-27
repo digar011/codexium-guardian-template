@@ -129,36 +129,6 @@ jobs:
         - regressions
         - failure scenarios
 
-
-  neo_review:
-   name: Neo Multi-Perspective Review
-   needs: neo
-   if: needs.neo.outputs.decision != 'SKIP_AUTOMATION'
-   runs-on: ubuntu-latest
-
-   permissions:
-    contents: read
-    pull-requests: write
-    issues: write
-
-   steps:
-    - uses: actions/checkout@v4
-
-    - name: Run Neo review (PM, QA, Security, TL)
-      uses: openai/codex-action@v1
-      with:
-        openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-        prompt: |
-          You are Neo, the Codexium V4 AI Dev Team.
-
-          Perform a structured pull request review from four roles:
-          1. Product Manager – scope, clarity, risks
-          2. Tech Lead – architecture, correctness
-          3. QA – edge cases, test gaps
-          4. Security – vulnerabilities, secrets, permissions
-
-          Review ONLY the diff in this PR.
-          Be concise, actionable, and role-labeled.
  
   neo_consensus:
         name: Neo Consensus
