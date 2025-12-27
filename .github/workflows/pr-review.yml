@@ -6,6 +6,6 @@ on:
 
 jobs:
   guardian:
-    uses: digar011/guardian-test/.github/workflows/codex-guardian.yml@main
+    uses: digar011/guardian-test/.github/workflows/codex-review.yml@main
     secrets:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
