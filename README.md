@@ -15,5 +15,5 @@ Reusable GitHub Actions template for AI-powered pull request reviews using Codex
 4. Open a pull request — Codex Guardian runs automatically
 
 ## Required secret
-
+ 
 - `OPENAI_API_KEY`
