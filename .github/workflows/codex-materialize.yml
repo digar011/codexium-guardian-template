@@ -28,7 +28,7 @@ permissions:
 
 # 🔐 Global safety switch (resolved reliably via env)
 env:
-  NEO_AUTOMATION_ENABLED: ${{ vars.NEO_AUTOMATION_ENABLED }}
+  NEO_AUTOMATION_ENABLED: ${{ secrets.NEO_AUTOMATION_ENABLED }}
 
 jobs:
   materialize:
