@@ -166,6 +166,41 @@ jobs:
         - concise findings
 
 
+  neo_gate:
+    name: Neo Merge Gate (critical-only)
+    needs: [architect_review, security_review, qa_review]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Evaluate critical findings
+        run: |
+          # This gate is conservative by design.
+          # It blocks ONLY on "Severity: critical" + "Confidence: high".
+          # If outputs are unavailable, it does NOT block.
+
+          BLOCK=false
+
+          check() {
+            echo "$1" | grep -qi "Severity:\s*critical" && \
+            echo "$1" | grep -qi "Confidence:\s*high" && BLOCK=true
+          }
+
+          check "${{ needs.architect_review.outputs.review || '' }}"
+          check "${{ needs.security_review.outputs.review || '' }}"
+          check "${{ needs.qa_review.outputs.review || '' }}"
+
+          if [ "$BLOCK" = true ]; then
+            echo "Blocking merge due to critical, high-confidence finding."
+            exit 1
+          fi
+
+          echo "No critical blockers detected."
+
+
  
   neo_consensus:
         name: Neo Consensus
