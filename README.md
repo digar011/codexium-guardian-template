@@ -3,7 +3,7 @@
 Reusable GitHub Actions template for AI-powered pull request reviews using Codex Guardian.
 
 ## What this repository provides
-
+ 
 - Reusable workflow: `.github/workflows/codex-guardian.yml`
 - Example caller workflow: `.github/workflows/pr-review.yml`
 
