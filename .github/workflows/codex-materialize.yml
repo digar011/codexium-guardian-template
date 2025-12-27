@@ -66,11 +66,22 @@ jobs:
       - name: Write files
         run: |
           echo '${{ inputs.files }}' \
-            | jq -r 'to_entries[] | "\(.key)\u0000\(.value)"' \
-            | while IFS=$'\0' read -r filename content; do
-                echo "Writing $filename"
-                echo "$content" > "${{ inputs.target_path }}/$filename"
+            | jq -r 'to_entries[] | "\(.key)\n\(.value)\n---"' \
+            | while IFS= read -r filename && IFS= read -r content && IFS= read -r _; do
+                if [ -z "$filename" ]; then
+                  echo "❌ Empty filename detected"
+                  exit 1
+                fi
+
+                filepath="${{ inputs.target_path }}/$filename"
+                dirpath="$(dirname "$filepath")"
+
+                mkdir -p "$dirpath"
+
+                echo "Writing $filepath"
+                printf "%s\n" "$content" > "$filepath"
               done
+
 
       # 5️⃣ Configure git identity
       - name: Configure git identity
