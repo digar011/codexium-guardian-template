@@ -226,6 +226,54 @@ jobs:
           echo "No critical blockers detected."
 
 
+  neo_memory:
+    name: Neo Memory (V4)
+    needs: [neo, neo_gate, architect_review, security_review, qa_review]
+    if: vars.NEO_AUTOMATION_ENABLED == 'true' && needs.neo.outputs.decision == 'PROCEED'
+    runs-on: ubuntu-latest
+
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Write workflow summary
+        run: |
+          echo "## 🧠 Neo Memory Record (V4)" >> $GITHUB_STEP_SUMMARY
+          echo "- Decision: ${{ needs.neo_gate.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Write Neo memory record
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const decision =
+              '${{ needs.neo_gate.result }}' === 'success'
+                ? 'ALLOW'
+                : 'BLOCK'
+
+            const timestamp = new Date().toISOString()
+            const sha = context.payload.pull_request.head.sha
+
+            const body = [
+              '### 🧠 Neo Memory Record (V4)',
+              '',
+              `- **Decision:** ${decision}`,
+              '- **Severity:** derived',
+              '- **Confidence:** derived',
+              '- **Source:** guardian consensus',
+              `- **Timestamp:** ${timestamp}`,
+              `- **Commit:** ${sha}`
+            ].join('\n')
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body
+            })
+
+
  
   neo_consensus:
         name: Neo Consensus
