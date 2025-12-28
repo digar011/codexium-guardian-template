@@ -14,11 +14,6 @@ on:
       files:
         description: |
           JSON object mapping filename -> file content.
-          Example:
-          {
-            "README.md": "# Title",
-            "SERVICES.md": "Content"
-          }
         required: true
         type: string
 
@@ -26,7 +21,6 @@ permissions:
   contents: write
   pull-requests: write
 
-# 🔐 Global safety switch (resolved at runtime)
 env:
   NEO_AUTOMATION_ENABLED: ${{ secrets.NEO_AUTOMATION_ENABLED }}
 
@@ -36,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 0️⃣ Guardian kill switch (MUST be first)
+      # 0️⃣ Guardian kill switch
       - name: Guardian kill switch
         shell: bash
         run: |
@@ -53,14 +47,7 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      # 2️⃣ Clean up existing branch if it exists
-      - name: Delete existing branch
-        shell: bash
-        continue-on-error: true
-        run: |
-          git push origin --delete codex/${{ inputs.task_id }} || true
-
-      # 3️⃣ Validate JSON payload early
+      # 2️⃣ Validate JSON payload early
       - name: Validate JSON payload
         shell: bash
         run: |
@@ -78,63 +65,46 @@ jobs:
         run: |
           set -euo pipefail
           
-          # Parse and write each file
           while IFS= read -r entry; do
-            # Skip empty entries
             if [ -z "$entry" ]; then
               continue
             fi
             
-            # Extract filename and content using jq
             filename=$(echo "$entry" | jq -r '.key')
             content=$(echo "$entry" | jq -r '.value')
             
-            # Debug output
-            echo "🔍 Processing entry:"
-            echo "  Filename: '$filename'"
-            echo "  Content length: ${#content} chars"
+            echo "🔍 Processing: '$filename'"
             
-            # Validate filename
             if [ -z "$filename" ] || [ "$filename" = "null" ]; then
               echo "⚠️  Skipping entry with invalid key"
               continue
             fi
             
-            # Validate content
             if [ -z "$content" ] || [ "$content" = "null" ]; then
               echo "⚠️  Skipping entry with empty content for: $filename"
               continue
             fi
             
-            # Normalize filename
             filename=$(echo "$filename" | xargs)
             filename="${filename#/}"
             filename="${filename%/}"
             
-            # Skip if empty after normalization
             if [ -z "$filename" ]; then
               echo "⚠️  Skipping empty filename"
               continue
             fi
             
-            # Build filepath
             filepath="${{ inputs.target_path }}/${filename}"
             
-            # Verify it's not a directory
             if [ -d "$filepath" ]; then
               echo "⚠️  Skipping existing directory: $filepath"
               continue
             fi
             
             echo "📝 Writing: $filepath"
-            
-            # Create parent directory
             mkdir -p "$(dirname "$filepath")"
-            
-            # Write file with proper newline handling
             echo -e "$content" > "$filepath"
             
-            # Verify file was written
             if [ -s "$filepath" ]; then
               echo "✅ Created: $filepath ($(wc -c < "$filepath") bytes)"
             else
@@ -152,8 +122,12 @@ jobs:
           echo ""
           echo "📊 Git status:"
           git status --short
+          
+          echo ""
+          echo "📊 Git diff summary:"
+          git diff --stat
 
-      # 6️⃣ Create pull request (handles commit, push, and PR)
+      # 6️⃣ Create pull request
       - name: Create pull request
         id: cpr
         uses: peter-evans/create-pull-request@v6
@@ -182,14 +156,13 @@ jobs:
 
       # 7️⃣ Output PR details
       - name: PR Created
-        if: steps.cpr.outputs.pull-request-number
+        if: steps.cpr.outputs.pull-request-number != ''
         run: |
           echo "✅ Pull Request #${{ steps.cpr.outputs.pull-request-number }} created"
           echo "🔗 URL: ${{ steps.cpr.outputs.pull-request-url }}"
 
       # 8️⃣ Handle no changes case
       - name: No Changes Detected
-        if: steps.cpr.outputs.pull-request-number == ''
+        if: success() && steps.cpr.outputs.pull-request-number == ''
         run: |
           echo "ℹ️ No changes detected - files may already exist with same content"
-          echo "Branch pushed but no PR needed"
