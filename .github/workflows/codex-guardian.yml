@@ -138,24 +138,8 @@ jobs:
           # Build JSON payload properly
           PROMPT_JSON=$(cat /tmp/prompt_final.txt | jq -Rs .)
           
-          # Create JSON payload file to avoid shell escaping issues
-          cat > /tmp/api_payload.json <<PAYLOAD_EOF
-{
-  "model": "gpt-4-turbo-preview",
-  "messages": [
-    {
-      "role": "system",
-      "content": "You are Codexium V4, an AI code reviewer. Be concise, specific, and constructive."
-    },
-    {
-      "role": "user",
-      "content": ${PROMPT_JSON}
-    }
-  ],
-  "temperature": 0.3,
-  "max_tokens": 1500
-}
-PAYLOAD_EOF
+          # Create JSON payload using echo to avoid YAML heredoc issues
+          echo "{\"model\":\"gpt-4-turbo-preview\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Codexium V4, an AI code reviewer. Be concise, specific, and constructive.\"},{\"role\":\"user\",\"content\":$PROMPT_JSON}],\"temperature\":0.3,\"max_tokens\":1500}" > /tmp/api_payload.json
           
           # Call OpenAI API with JSON file
           RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
