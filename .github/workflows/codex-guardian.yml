@@ -98,61 +98,65 @@ jobs:
           DIFF_CONTENT=$(head -c 30000 /tmp/pr_diff.txt)
           ROLE_INSTRUCTION=$(cat /tmp/role_instruction.txt)
           
-          # Build the prompt
-          PROMPT="$ROLE_INSTRUCTION
-
-          ## Pull Request Details
-          - Repository: ${{ github.repository }}
-          - PR: #${{ github.event.pull_request.number }}
-          - Title: ${{ github.event.pull_request.title }}
-          - Author: ${{ github.event.pull_request.user.login }}
-
-          ## Changed Files
-          $(cat /tmp/changed_files.txt)
-
-          ## Code Changes
-          \`\`\`diff
-          $DIFF_CONTENT
-          \`\`\`
-
-          Provide a concise code review. Format your response as:
-
-          **Severity:** [info/warn/critical]
-
-          **Summary:** [1-2 sentence overview]
-
-          **Findings:**
-          - [Key finding 1]
-          - [Key finding 2]
-          - [etc.]
-
-          **Recommendations:**
-          - [Specific actionable recommendation]
-
-          Keep it concise and actionable."
-
-          # Call OpenAI API
+          # Build prompt in file to avoid JSON escaping issues
+          ROLE_INST=$(cat /tmp/role_instruction.txt)
+          CHANGED_FILES=$(cat /tmp/changed_files.txt)
+          
+          # Build complete prompt
+          {
+            cat /tmp/role_instruction.txt
+            echo ""
+            echo "## Pull Request Details"
+            echo "- Repository: ${{ github.repository }}"
+            echo "- PR: #${{ github.event.pull_request.number }}"
+            echo "- Title: ${{ github.event.pull_request.title }}"
+            echo "- Author: ${{ github.event.pull_request.user.login }}"
+            echo ""
+            echo "## Changed Files"
+            cat /tmp/changed_files.txt
+            echo ""
+            echo "## Code Changes"
+            echo '```diff'
+            head -c 30000 /tmp/pr_diff.txt
+            echo '```'
+            echo ""
+            echo "Provide a concise code review. Format your response as:"
+            echo ""
+            echo "**Severity:** [info/warn/critical]"
+            echo ""
+            echo "**Summary:** [1-2 sentence overview]"
+            echo ""
+            echo "**Findings:**"
+            echo "- [Key finding 1]"
+            echo ""
+            echo "**Recommendations:**"
+            echo "- [Specific actionable recommendation]"
+            echo ""
+            echo "Keep it concise and actionable."
+          } > /tmp/prompt_final.txt
+          
+          # Build JSON payload properly
+          PROMPT_JSON=$(cat /tmp/prompt_final.txt | jq -Rs .)
+          
+          # Call OpenAI API with properly escaped JSON
           RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
-            -d @- <<EOF
-          {
-            "model": "gpt-4-turbo-preview",
-            "messages": [
-              {
-                "role": "system",
-                "content": "You are Codexium V4, an AI code reviewer. Be concise, specific, and constructive."
-              },
-              {
-                "role": "user",
-                "content": $(echo "$PROMPT" | jq -Rs .)
-              }
-            ],
-            "temperature": 0.3,
-            "max_tokens": 1500
-          }
-          EOF
-          )
+            -d "{
+              \"model\": \"gpt-4-turbo-preview\",
+              \"messages\": [
+                {
+                  \"role\": \"system\",
+                  \"content\": \"You are Codexium V4, an AI code reviewer. Be concise, specific, and constructive.\"
+                },
+                {
+                  \"role\": \"user\",
+                  \"content\": $PROMPT_JSON
+                }
+              ],
+              \"temperature\": 0.3,
+              \"max_tokens\": 1500
+            }")
           
           # Extract the review text
           REVIEW_TEXT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
