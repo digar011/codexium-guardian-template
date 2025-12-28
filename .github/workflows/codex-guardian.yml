@@ -138,25 +138,30 @@ jobs:
           # Build JSON payload properly
           PROMPT_JSON=$(cat /tmp/prompt_final.txt | jq -Rs .)
           
-          # Call OpenAI API with properly escaped JSON
+          # Create JSON payload file to avoid shell escaping issues
+          cat > /tmp/api_payload.json <<PAYLOAD_EOF
+{
+  "model": "gpt-4-turbo-preview",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are Codexium V4, an AI code reviewer. Be concise, specific, and constructive."
+    },
+    {
+      "role": "user",
+      "content": ${PROMPT_JSON}
+    }
+  ],
+  "temperature": 0.3,
+  "max_tokens": 1500
+}
+PAYLOAD_EOF
+          
+          # Call OpenAI API with JSON file
           RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
-            -d "{
-              \"model\": \"gpt-4-turbo-preview\",
-              \"messages\": [
-                {
-                  \"role\": \"system\",
-                  \"content\": \"You are Codexium V4, an AI code reviewer. Be concise, specific, and constructive.\"
-                },
-                {
-                  \"role\": \"user\",
-                  \"content\": $PROMPT_JSON
-                }
-              ],
-              \"temperature\": 0.3,
-              \"max_tokens\": 1500
-            }")
+            -d @/tmp/api_payload.json)
           
           # Extract the review text
           REVIEW_TEXT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
