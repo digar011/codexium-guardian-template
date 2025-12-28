@@ -70,41 +70,37 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          echo '${{ inputs.files }}' \
-            | jq -c 'to_entries[]' \
-            | while read -r entry; do
-
-              if [ -z "$entry" ]; then
-                echo "⚠️ Skipping empty entry"
-                continue
-              fi
-
-              filename="$(echo "$entry" | jq -r '.key')"
-              content="$(echo "$entry" | jq -r '.value')"
-
-              if [ -z "$filename" ] || [ "$filename" = "null" ]; then
-                echo "❌ Invalid filename"
-                exit 1
-              fi
-
-              if [[ "$filename" == */ ]]; then
-                echo "❌ Filename is a directory: $filename"
-                exit 1
-              fi
-
-              filepath="${{ inputs.target_path }}/$filename"
-
-              if [ -d "$filepath" ]; then
-                echo "❌ Target path is a directory: $filepath"
-                exit 1
-              fi
-
-              mkdir -p "$(dirname "$filepath")"
-
-              echo "Writing $filepath"
-              printf "%s\n" "$content" > "$filepath"
-            done
+          
+          echo '${{ inputs.files }}' | jq -r 'to_entries[] | @json' | while IFS= read -r entry; do
+            filename=$(echo "$entry" | jq -r '.key')
+            content=$(echo "$entry" | jq -r '.value')
+            
+            # Validate filename
+            if [ -z "$filename" ] || [ "$filename" = "null" ]; then
+              echo "❌ Invalid filename"
+              exit 1
+            fi
+            
+            # Remove leading/trailing slashes
+            filename="${filename#/}"
+            filename="${filename%/}"
+            
+            # Skip if filename is empty after cleaning
+            if [ -z "$filename" ]; then
+              echo "❌ Empty filename after normalization"
+              exit 1
+            fi
+            
+            # Construct full filepath
+            filepath="${{ inputs.target_path }}/${filename}"
+            
+            # Create parent directory
+            mkdir -p "$(dirname "$filepath")"
+            
+            # Write file
+            echo "Writing $filepath"
+            echo "$content" > "$filepath"
+          done
 
       # 5️⃣ Configure git identity
       - name: Configure git identity
@@ -165,6 +161,5 @@ jobs:
             codex
             guardian
             automated
-
 
 
