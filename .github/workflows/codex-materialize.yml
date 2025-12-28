@@ -1,10 +1,10 @@
-name: Codex Materializer (Guardian)
+name: Codex Materializer
 
 on:
   workflow_dispatch:
     inputs:
       task_id:
-        description: "Codex task identifier (e.g. v4-docs-baseline)"
+        description: "Task identifier (e.g. v4-docs-baseline)"
         required: true
         type: string
       target_path:
@@ -14,6 +14,7 @@ on:
       files:
         description: |
           JSON object mapping filename -> file content.
+          Example: {"README.md": "# Title\n\nContent", "GUIDE.md": "Guide text"}
         required: true
         type: string
 
@@ -21,148 +22,183 @@ permissions:
   contents: write
   pull-requests: write
 
-env:
-  NEO_AUTOMATION_ENABLED: ${{ secrets.NEO_AUTOMATION_ENABLED }}
-
 jobs:
   materialize:
-    name: Materialize Codex Output
+    name: Materialize Files
     runs-on: ubuntu-latest
-
+    
     steps:
-      # 0️⃣ Guardian kill switch
-      - name: Guardian kill switch
-        shell: bash
-        run: |
-          if [ "${NEO_AUTOMATION_ENABLED}" != "true" ]; then
-            echo "❌ NEO automation is disabled. Exiting."
-            exit 1
-          fi
-          echo "✅ NEO automation enabled. Continuing."
-
-      # 1️⃣ Checkout repository
+      # 1️⃣ Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          persist-credentials: true
           fetch-depth: 0
-
-      # 2️⃣ Validate JSON payload early
-      - name: Validate JSON payload
-        shell: bash
+      
+      # 2️⃣ Validate JSON early
+      - name: Validate JSON input
         run: |
-          echo '${{ inputs.files }}' | jq type > /dev/null
-
+          echo "🔍 Validating JSON input..."
+          echo '${{ inputs.files }}' | jq empty
+          echo "✅ JSON is valid"
+      
       # 3️⃣ Create target directory
       - name: Create target directory
-        shell: bash
         run: |
           mkdir -p "${{ inputs.target_path }}"
-
-      # 4️⃣ Write files (hardened)
-      - name: Write files
-        shell: bash
+          echo "📁 Created directory: ${{ inputs.target_path }}"
+      
+      # 4️⃣ Write files (FIXED VERSION)
+      - name: Write files from JSON
         run: |
           set -euo pipefail
           
-          while IFS= read -r entry; do
-            if [ -z "$entry" ]; then
-              continue
-            fi
+          echo "📝 Writing files..."
+          
+          # Parse JSON and write each file
+          echo '${{ inputs.files }}' | jq -r 'to_entries[] | 
+            @json "\(.key)\t\(.value)"
+          ' | while IFS=$'\t' read -r filename content; do
+            # Remove JSON quotes
+            filename=$(echo "$filename" | jq -r '.')
+            content=$(echo "$content" | jq -r '.')
             
-            filename=$(echo "$entry" | jq -r '.key')
-            content=$(echo "$entry" | jq -r '.value')
-            
-            echo "🔍 Processing: '$filename'"
-            
+            # Skip empty
             if [ -z "$filename" ] || [ "$filename" = "null" ]; then
-              echo "⚠️  Skipping entry with invalid key"
               continue
             fi
             
-            if [ -z "$content" ] || [ "$content" = "null" ]; then
-              echo "⚠️  Skipping entry with empty content for: $filename"
-              continue
-            fi
-            
-            filename=$(echo "$filename" | xargs)
-            filename="${filename#/}"
-            filename="${filename%/}"
-            
-            if [ -z "$filename" ]; then
-              echo "⚠️  Skipping empty filename"
-              continue
-            fi
-            
+            # Build path
             filepath="${{ inputs.target_path }}/${filename}"
             
-            if [ -d "$filepath" ]; then
-              echo "⚠️  Skipping existing directory: $filepath"
-              continue
-            fi
+            echo "  → Writing: $filepath"
             
-            echo "📝 Writing: $filepath"
+            # Create parent directory
             mkdir -p "$(dirname "$filepath")"
-            echo -e "$content" > "$filepath"
             
-            if [ -s "$filepath" ]; then
-              echo "✅ Created: $filepath ($(wc -c < "$filepath") bytes)"
+            # Write file (handle newlines properly)
+            printf '%s\n' "$content" > "$filepath"
+            
+            # Verify
+            if [ -f "$filepath" ]; then
+              echo "    ✅ $(wc -l < "$filepath") lines written"
             else
-              echo "❌ WARNING: File is empty: $filepath"
+              echo "    ❌ Failed to write file"
+              exit 1
             fi
-          done < <(echo '${{ inputs.files }}' | jq -c 'to_entries[]')
-
-      # 5️⃣ Verify files were created
-      - name: Verify files were created
-        shell: bash
+          done
+          
+          echo "✅ All files written"
+      
+      # 5️⃣ Verify what was created
+      - name: Verify files
         run: |
-          echo "📋 Files in target directory:"
-          ls -la "${{ inputs.target_path }}" || echo "Directory doesn't exist or is empty"
+          echo "📋 Files in ${{ inputs.target_path }}:"
+          ls -lah "${{ inputs.target_path }}"
           
           echo ""
           echo "📊 Git status:"
           git status --short
           
           echo ""
-          echo "📊 Git diff summary:"
-          git diff --stat
-
-      # 6️⃣ Create pull request
-      - name: Create pull request
+          echo "📈 Changes summary:"
+          git diff --stat || echo "No changes detected"
+      
+      # 6️⃣ Create PR (this handles commit + push + PR creation)
+      - name: Create Pull Request
         id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ github.token }}
           commit-message: "codex: materialize ${{ inputs.task_id }}"
-          branch: codex/${{ inputs.task_id }}
+          committer: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          author: "${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>"
+          branch: "codex/${{ inputs.task_id }}"
           delete-branch: true
-          title: "Codex: ${{ inputs.task_id }}"
+          title: "🤖 Codex: ${{ inputs.task_id }}"
           body: |
-            ## Codex Materialized Output
-
-            **Task:** ${{ inputs.task_id }}
-            **Target Path:** `${{ inputs.target_path }}`
-
-            This PR was automatically generated by **Codex Guardian**.
-
+            ## 🤖 Codexium V4 - Materialized Output
+            
+            **Task:** `${{ inputs.task_id }}`  
+            **Target Path:** `${{ inputs.target_path }}`  
+            **Generated:** $(date -u +"%Y-%m-%d %H:%M UTC")
+            
+            This PR was automatically generated by **Codexium V4 Materializer**.
+            
+            ### 📋 What's included
             - Deterministic output only
-            - V4 rules enforced
-            - Human approval required
-            - No auto-merge
+            - V4 quality standards enforced
+            - Ready for human review
+            
+            ### ✅ Next steps
+            1. Review the generated files
+            2. Request changes if needed
+            3. Approve and merge
+            
+            ---
+            <sub>⚠️ **Do not auto-merge** - Human approval required</sub>
           labels: |
             codex
-            guardian
             automated
-
-      # 7️⃣ Output PR details
-      - name: PR Created
+            needs-review
+          draft: false
+      
+      # 7️⃣ Output results
+      - name: PR Created Successfully
         if: steps.cpr.outputs.pull-request-number != ''
         run: |
-          echo "✅ Pull Request #${{ steps.cpr.outputs.pull-request-number }} created"
-          echo "🔗 URL: ${{ steps.cpr.outputs.pull-request-url }}"
-
-      # 8️⃣ Handle no changes case
+          echo "✅ Pull Request created successfully!"
+          echo ""
+          echo "📋 Details:"
+          echo "  PR Number: #${{ steps.cpr.outputs.pull-request-number }}"
+          echo "  PR URL: ${{ steps.cpr.outputs.pull-request-url }}"
+          echo "  Branch: codex/${{ inputs.task_id }}"
+          echo ""
+          echo "🔗 View PR: ${{ steps.cpr.outputs.pull-request-url }}"
+      
       - name: No Changes Detected
-        if: success() && steps.cpr.outputs.pull-request-number == ''
+        if: steps.cpr.outputs.pull-request-number == ''
         run: |
-          echo "ℹ️ No changes detected - files may already exist with same content"
+          echo "ℹ️ No changes detected"
+          echo ""
+          echo "This usually means:"
+          echo "  - Files already exist with identical content"
+          echo "  - No modifications were made"
+          echo ""
+          echo "If this is unexpected, check:"
+          echo "  1. The JSON input format"
+          echo "  2. File paths in target_path"
+          echo "  3. Git diff output above"
+      
+      # 8️⃣ Send Slack notification (optional)
+      - name: Notify Slack
+        if: steps.cpr.outputs.pull-request-number != '' && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d @- <<EOF
+          {
+            "text": "🤖 Codexium V4 Materializer",
+            "attachments": [
+              {
+                "color": "good",
+                "title": "PR #${{ steps.cpr.outputs.pull-request-number }}: ${{ inputs.task_id }}",
+                "title_link": "${{ steps.cpr.outputs.pull-request-url }}",
+                "fields": [
+                  {
+                    "title": "Task",
+                    "value": "${{ inputs.task_id }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Path",
+                    "value": "${{ inputs.target_path }}",
+                    "short": true
+                  }
+                ],
+                "footer": "Codexium V4 Materializer"
+              }
+            ]
+          }
+          EOF
