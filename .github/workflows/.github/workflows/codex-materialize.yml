@@ -1,0 +1,181 @@
+name: Codex Materializer (Guardian)
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: "Codex task identifier (e.g. v4-docs-baseline)"
+        required: true
+        type: string
+      target_path:
+        description: "Target directory (e.g. docs)"
+        required: true
+        type: string
+      files:
+        description: |
+          JSON object mapping filename -> file content.
+          Example:
+          {
+            "README.md": "# Title",
+            "SERVICES.md": "Content"
+          }
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# 🔐 Global safety switch (resolved at runtime)
+env:
+  NEO_AUTOMATION_ENABLED: ${{ secrets.NEO_AUTOMATION_ENABLED }}
+
+jobs:
+  materialize:
+    name: Materialize Codex Output
+    runs-on: ubuntu-latest
+
+    steps:
+      # 0️⃣ Guardian kill switch (MUST be first)
+      - name: Guardian kill switch
+        shell: bash
+        run: |
+          if [ "${NEO_AUTOMATION_ENABLED}" != "true" ]; then
+            echo "❌ NEO automation is disabled. Exiting."
+            exit 1
+          fi
+          echo "✅ NEO automation enabled. Continuing."
+
+      # 1️⃣ Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      # 2️⃣ Validate JSON payload early
+      - name: Validate JSON payload
+        shell: bash
+        run: |
+          echo '${{ inputs.files }}' | jq type > /dev/null
+
+      # 3️⃣ Create target directory
+      - name: Create target directory
+        shell: bash
+        run: |
+          mkdir -p "${{ inputs.target_path }}"
+
+      # 4️⃣ Write files (hardened)
+      - name: Write files
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          # Parse and write each file
+          echo '${{ inputs.files }}' | jq -c 'to_entries[]' | while read -r entry; do
+            # Extract filename and content
+            filename=$(echo "$entry" | jq -r '.key // empty')
+            content=$(echo "$entry" | jq -r '.value // empty')
+            
+            # Skip if filename is null, empty, or just whitespace
+            if [ -z "$filename" ] || [ "$filename" = "null" ]; then
+              echo "⚠️  Skipping entry with empty/null key"
+              continue
+            fi
+            
+            # Normalize filename: remove leading/trailing slashes and whitespace
+            filename=$(echo "$filename" | xargs)
+            filename="${filename#/}"
+            filename="${filename%/}"
+            
+            # Validate filename after normalization
+            if [ -z "$filename" ]; then
+              echo "⚠️  Skipping entry with empty filename after normalization"
+              continue
+            fi
+            
+            # Skip directory entries
+            if [[ "$filename" =~ /$ ]]; then
+              echo "⚠️  Skipping directory entry: $filename"
+              continue
+            fi
+            
+            # Ensure filename doesn't contain dangerous patterns
+            if [[ "$filename" == *".."* ]]; then
+              echo "❌ Invalid filename contains '..': $filename"
+              exit 1
+            fi
+            
+            # Build full filepath
+            filepath="${{ inputs.target_path }}/${filename}"
+            
+            echo "📝 Writing: $filepath"
+            
+            # Create parent directory if needed
+            mkdir -p "$(dirname "$filepath")"
+            
+            # Write the file
+            printf '%s' "$content" > "$filepath"
+            
+            echo "✅ Created: $filepath"
+          done
+
+      # 5️⃣ Configure git identity
+      - name: Configure git identity
+        shell: bash
+        run: |
+          git config user.name "codexium-guardian-bot"
+          git config user.email "guardian@codexium.ai"
+
+      # 6️⃣ Ensure git remote exists
+      - name: Configure git remote
+        shell: bash
+        run: |
+          git remote remove origin || true
+          git remote add origin https://github.com/${{ github.repository }}.git
+
+      # 7️⃣ Create branch
+      - name: Create branch
+        shell: bash
+        run: |
+          git checkout -b codex/${{ inputs.task_id }}
+
+      # 8️⃣ Commit changes
+      - name: Commit changes
+        shell: bash
+        run: |
+          git add "${{ inputs.target_path }}"
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 1
+          fi
+          git commit -m "codex: materialize ${{ inputs.task_id }}"
+
+      # 9️⃣ Push branch
+      - name: Push branch
+        shell: bash
+        run: |
+          git push origin codex/${{ inputs.task_id }}
+
+      # 🔟 Open pull request
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: codex/${{ inputs.task_id }}
+          title: "Codex: ${{ inputs.task_id }}"
+          body: |
+            ## Codex Materialized Output
+
+            **Task:** ${{ inputs.task_id }}
+            **Target Path:** `${{ inputs.target_path }}`
+
+            This PR was automatically generated by **Codex Guardian**.
+
+            - Deterministic output only
+            - V4 rules enforced
+            - Human approval required
+            - No auto-merge
+          labels: |
+            codex
+            guardian
+            automated
