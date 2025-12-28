@@ -109,6 +109,18 @@ jobs:
             # Build full filepath
             filepath="${{ inputs.target_path }}/${filename}"
             
+            # CRITICAL: Verify filepath is not a directory path
+            if [[ "$filepath" == */ ]] || [ -d "$filepath" ]; then
+              echo "⚠️  Skipping - filepath resolves to directory: $filepath"
+              continue
+            fi
+            
+            # Verify filepath has a filename component
+            if [ "$(basename "$filepath")" = "" ] || [ "$(basename "$filepath")" = "." ]; then
+              echo "⚠️  Skipping - no filename in path: $filepath"
+              continue
+            fi
+            
             echo "📝 Writing: $filepath"
             
             # Create parent directory if needed
