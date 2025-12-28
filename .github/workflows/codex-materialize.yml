@@ -105,9 +105,6 @@ jobs:
               echo "Writing $filepath"
               printf "%s\n" "$content" > "$filepath"
             done
-e
-
-
 
       # 5️⃣ Configure git identity
       - name: Configure git identity
