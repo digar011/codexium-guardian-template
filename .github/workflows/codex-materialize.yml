@@ -89,9 +89,20 @@ jobs:
             filename=$(echo "$entry" | jq -r '.key')
             content=$(echo "$entry" | jq -r '.value')
             
+            # Debug output
+            echo "🔍 Processing entry:"
+            echo "  Filename: '$filename'"
+            echo "  Content length: ${#content} chars"
+            
             # Validate filename
             if [ -z "$filename" ] || [ "$filename" = "null" ]; then
               echo "⚠️  Skipping entry with invalid key"
+              continue
+            fi
+            
+            # Validate content
+            if [ -z "$content" ] || [ "$content" = "null" ]; then
+              echo "⚠️  Skipping entry with empty content for: $filename"
               continue
             fi
             
@@ -120,10 +131,15 @@ jobs:
             # Create parent directory
             mkdir -p "$(dirname "$filepath")"
             
-            # Write file
-            printf '%s' "$content" > "$filepath"
+            # Write file with proper newline handling
+            echo -e "$content" > "$filepath"
             
-            echo "✅ Created: $filepath"
+            # Verify file was written
+            if [ -s "$filepath" ]; then
+              echo "✅ Created: $filepath ($(wc -c < "$filepath") bytes)"
+            else
+              echo "❌ WARNING: File is empty: $filepath"
+            fi
           done < <(echo '${{ inputs.files }}' | jq -c 'to_entries[]')
 
       # 5️⃣ Verify files were created
@@ -139,6 +155,7 @@ jobs:
 
       # 6️⃣ Create pull request (handles commit, push, and PR)
       - name: Create pull request
+        id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ github.token }}
@@ -162,3 +179,17 @@ jobs:
             codex
             guardian
             automated
+
+      # 7️⃣ Output PR details
+      - name: PR Created
+        if: steps.cpr.outputs.pull-request-number
+        run: |
+          echo "✅ Pull Request #${{ steps.cpr.outputs.pull-request-number }} created"
+          echo "🔗 URL: ${{ steps.cpr.outputs.pull-request-url }}"
+
+      # 8️⃣ Handle no changes case
+      - name: No Changes Detected
+        if: steps.cpr.outputs.pull-request-number == ''
+        run: |
+          echo "ℹ️ No changes detected - files may already exist with same content"
+          echo "Branch pushed but no PR needed"
