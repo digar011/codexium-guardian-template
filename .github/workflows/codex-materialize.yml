@@ -65,7 +65,7 @@ jobs:
         run: |
           mkdir -p "${{ inputs.target_path }}"
 
-      # 4️⃣ Write files (base64-safe, directory-safe)
+      # 4️⃣ Write files (hardened)
       - name: Write files
         shell: bash
         run: |
@@ -77,20 +77,33 @@ jobs:
                 echo "$entry" | base64 --decode | jq -r "$1"
               }
 
-              filename="$(decode '.key')"
+              filename="$(decode '.key' | xargs)"
               content="$(decode '.value')"
 
+              # 🔒 HARD GUARDS
               if [ -z "$filename" ]; then
-                echo "❌ Empty filename detected"
+                echo "❌ Empty filename detected — aborting"
+                exit 1
+              fi
+
+              if [[ "$filename" == */ ]]; then
+                echo "❌ Filename resolves to directory: $filename"
                 exit 1
               fi
 
               filepath="${{ inputs.target_path }}/$filename"
+
+              if [ -d "$filepath" ]; then
+                echo "❌ Target path is a directory: $filepath"
+                exit 1
+              fi
+
               mkdir -p "$(dirname "$filepath")"
 
               echo "Writing $filepath"
               printf "%s\n" "$content" > "$filepath"
             done
+
 
       # 5️⃣ Configure git identity
       - name: Configure git identity
