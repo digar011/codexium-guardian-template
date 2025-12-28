@@ -53,7 +53,14 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      # 2️⃣ Validate JSON payload early
+      # 2️⃣ Clean up existing branch if it exists
+      - name: Delete existing branch
+        shell: bash
+        continue-on-error: true
+        run: |
+          git push origin --delete codex/${{ inputs.task_id }} || true
+
+      # 3️⃣ Validate JSON payload early
       - name: Validate JSON payload
         shell: bash
         run: |
@@ -119,7 +126,18 @@ jobs:
             echo "✅ Created: $filepath"
           done < <(echo '${{ inputs.files }}' | jq -c 'to_entries[]')
 
-      # 5️⃣ Create pull request (handles commit, push, and PR)
+      # 5️⃣ Verify files were created
+      - name: Verify files were created
+        shell: bash
+        run: |
+          echo "📋 Files in target directory:"
+          ls -la "${{ inputs.target_path }}" || echo "Directory doesn't exist or is empty"
+          
+          echo ""
+          echo "📊 Git status:"
+          git status --short
+
+      # 6️⃣ Create pull request (handles commit, push, and PR)
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6
         with:
