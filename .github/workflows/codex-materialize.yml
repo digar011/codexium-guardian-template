@@ -154,7 +154,7 @@ jobs:
       - name: Push branch
         shell: bash
         run: |
-          git push origin codex/${{ inputs.task_id }}
+          git push --force-with-lease origin codex/${{ inputs.task_id }}
 
       # 🔟 Open pull request
       - name: Open pull request
