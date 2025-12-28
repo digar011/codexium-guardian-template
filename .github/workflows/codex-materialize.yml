@@ -72,65 +72,52 @@ jobs:
           set -euo pipefail
           
           # Parse and write each file
-          echo '${{ inputs.files }}' | jq -c 'to_entries[]' | while read -r entry; do
-            # Extract filename and content
-            filename=$(echo "$entry" | jq -r '.key // empty')
-            content=$(echo "$entry" | jq -r '.value // empty')
-            
-            # Skip if filename is null, empty, or just whitespace
-            if [ -z "$filename" ] || [ "$filename" = "null" ]; then
-              echo "⚠️  Skipping entry with empty/null key"
+          while IFS= read -r entry; do
+            # Skip empty entries
+            if [ -z "$entry" ]; then
               continue
             fi
             
-            # Normalize filename: remove leading/trailing slashes and whitespace
+            # Extract filename and content using jq
+            filename=$(echo "$entry" | jq -r '.key')
+            content=$(echo "$entry" | jq -r '.value')
+            
+            # Validate filename
+            if [ -z "$filename" ] || [ "$filename" = "null" ]; then
+              echo "⚠️  Skipping entry with invalid key"
+              continue
+            fi
+            
+            # Normalize filename
             filename=$(echo "$filename" | xargs)
             filename="${filename#/}"
             filename="${filename%/}"
             
-            # Validate filename after normalization
+            # Skip if empty after normalization
             if [ -z "$filename" ]; then
-              echo "⚠️  Skipping entry with empty filename after normalization"
+              echo "⚠️  Skipping empty filename"
               continue
             fi
             
-            # Skip directory entries
-            if [[ "$filename" =~ /$ ]]; then
-              echo "⚠️  Skipping directory entry: $filename"
-              continue
-            fi
-            
-            # Ensure filename doesn't contain dangerous patterns
-            if [[ "$filename" == *".."* ]]; then
-              echo "❌ Invalid filename contains '..': $filename"
-              exit 1
-            fi
-            
-            # Build full filepath
+            # Build filepath
             filepath="${{ inputs.target_path }}/${filename}"
             
-            # CRITICAL: Verify filepath is not a directory path
-            if [[ "$filepath" == */ ]] || [ -d "$filepath" ]; then
-              echo "⚠️  Skipping - filepath resolves to directory: $filepath"
-              continue
-            fi
-            
-            # Verify filepath has a filename component
-            if [ "$(basename "$filepath")" = "" ] || [ "$(basename "$filepath")" = "." ]; then
-              echo "⚠️  Skipping - no filename in path: $filepath"
+            # Verify it's not a directory
+            if [ -d "$filepath" ]; then
+              echo "⚠️  Skipping existing directory: $filepath"
               continue
             fi
             
             echo "📝 Writing: $filepath"
             
-            # Create parent directory if needed
+            # Create parent directory
             mkdir -p "$(dirname "$filepath")"
             
-            # Write the file
+            # Write file
             printf '%s' "$content" > "$filepath"
             
             echo "✅ Created: $filepath"
-          done
+          done < <(echo '${{ inputs.files }}' | jq -c 'to_entries[]')
 
       # 5️⃣ Configure git identity
       - name: Configure git identity
@@ -191,4 +178,3 @@ jobs:
             codex
             guardian
             automated
-
