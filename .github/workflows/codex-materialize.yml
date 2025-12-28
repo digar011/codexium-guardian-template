@@ -119,54 +119,14 @@ jobs:
             echo "✅ Created: $filepath"
           done < <(echo '${{ inputs.files }}' | jq -c 'to_entries[]')
 
-      # 5️⃣ Configure git identity
-      - name: Configure git identity
-        shell: bash
-        run: |
-          git config user.name "codexium-guardian-bot"
-          git config user.email "guardian@codexium.ai"
-
-      # 6️⃣ Ensure git remote exists
-      - name: Configure git remote
-        shell: bash
-        run: |
-          git remote remove origin || true
-          git remote add origin https://github.com/${{ github.repository }}.git
-
-      # 7️⃣ Create branch
-      - name: Create branch
-        shell: bash
-        run: |
-          git checkout -b codex/${{ inputs.task_id }}
-
-      # 8️⃣ Commit changes
-      - name: Commit changes
-        shell: bash
-        run: |
-          git add "${{ inputs.target_path }}"
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-            exit 1
-          fi
-          git commit -m "codex: materialize ${{ inputs.task_id }}"
-
-      # 8.5️⃣ Delete remote branch if it exists
-      - name: Delete remote branch if exists
-        shell: bash
-        run: |
-          git push origin --delete codex/${{ inputs.task_id }} || echo "Branch doesn't exist on remote, continuing..."
-
-      # 9️⃣ Push branch
-      - name: Push branch
-        shell: bash
-        run: |
-          git push --force origin codex/${{ inputs.task_id }}
-
-      # 🔟 Open pull request
-      - name: Open pull request
+      # 5️⃣ Create pull request (handles commit, push, and PR)
+      - name: Create pull request
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ github.token }}
+          commit-message: "codex: materialize ${{ inputs.task_id }}"
           branch: codex/${{ inputs.task_id }}
+          delete-branch: true
           title: "Codex: ${{ inputs.task_id }}"
           body: |
             ## Codex Materialized Output
