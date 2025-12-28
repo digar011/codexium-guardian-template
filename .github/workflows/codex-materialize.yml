@@ -71,9 +71,16 @@ jobs:
         run: |
           set -euo pipefail
           
+          # Debug: Show what we're parsing
+          echo "📋 Files to write:"
+          echo '${{ inputs.files }}' | jq -r 'keys[]'
+          echo ""
+          
           echo '${{ inputs.files }}' | jq -r 'to_entries[] | @json' | while IFS= read -r entry; do
             filename=$(echo "$entry" | jq -r '.key')
             content=$(echo "$entry" | jq -r '.value')
+            
+            echo "🔍 Processing: '$filename'"
             
             # Validate filename
             if [ -z "$filename" ] || [ "$filename" = "null" ]; then
@@ -91,15 +98,27 @@ jobs:
               exit 1
             fi
             
+            # Check if it looks like a directory (ends with /)
+            if [[ "$filename" == */ ]]; then
+              echo "⚠️  Skipping directory entry: $filename"
+              continue
+            fi
+            
             # Construct full filepath
             filepath="${{ inputs.target_path }}/${filename}"
+            
+            # Ensure we're not writing to a directory
+            if [ -d "$filepath" ]; then
+              echo "❌ Target path is already a directory: $filepath"
+              exit 1
+            fi
             
             # Create parent directory
             mkdir -p "$(dirname "$filepath")"
             
             # Write file
-            echo "Writing $filepath"
-            echo "$content" > "$filepath"
+            echo "✍️  Writing $filepath"
+            printf '%s' "$content" > "$filepath"
           done
 
       # 5️⃣ Configure git identity
