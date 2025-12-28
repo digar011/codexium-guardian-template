@@ -98,74 +98,42 @@ jobs:
           DIFF_CONTENT=$(head -c 30000 /tmp/pr_diff.txt)
           ROLE_INSTRUCTION=$(cat /tmp/role_instruction.txt)
           
-          # Build the prompt and save to file to avoid escaping issues
-          cat > /tmp/prompt.txt << 'PROMPT_EOF'
-$ROLE_INSTRUCTION
-
-## Pull Request Details
-- Repository: ${{ github.repository }}
-- PR: #${{ github.event.pull_request.number }}
-- Title: ${{ github.event.pull_request.title }}
-- Author: ${{ github.event.pull_request.user.login }}
-
-## Changed Files
-FILES_PLACEHOLDER
-
-## Code Changes
-```diff
-DIFF_PLACEHOLDER
-```
-
-Provide a concise code review. Format your response as:
-
-**Severity:** [info/warn/critical]
-
-**Summary:** [1-2 sentence overview]
-
-**Findings:**
-- [Key finding 1]
-- [Key finding 2]
-- [etc.]
-
-**Recommendations:**
-- [Specific actionable recommendation]
-
-Keep it concise and actionable.
-PROMPT_EOF
-
-          # Replace placeholders
+          # Build prompt in file to avoid JSON escaping issues
+          ROLE_INST=$(cat /tmp/role_instruction.txt)
           CHANGED_FILES=$(cat /tmp/changed_files.txt)
           
-          # Escape the role instruction properly
-          cat /tmp/role_instruction.txt > /tmp/prompt_final.txt
-          echo "" >> /tmp/prompt_final.txt
-          echo "## Pull Request Details" >> /tmp/prompt_final.txt
-          echo "- Repository: ${{ github.repository }}" >> /tmp/prompt_final.txt
-          echo "- PR: #${{ github.event.pull_request.number }}" >> /tmp/prompt_final.txt
-          echo "- Title: ${{ github.event.pull_request.title }}" >> /tmp/prompt_final.txt
-          echo "- Author: ${{ github.event.pull_request.user.login }}" >> /tmp/prompt_final.txt
-          echo "" >> /tmp/prompt_final.txt
-          echo "## Changed Files" >> /tmp/prompt_final.txt
-          cat /tmp/changed_files.txt >> /tmp/prompt_final.txt
-          echo "" >> /tmp/prompt_final.txt
-          echo "## Code Changes" >> /tmp/prompt_final.txt
-          echo '```diff' >> /tmp/prompt_final.txt
-          head -c 30000 /tmp/pr_diff.txt >> /tmp/prompt_final.txt
-          echo '```' >> /tmp/prompt_final.txt
-          echo "" >> /tmp/prompt_final.txt
-          echo "Provide a concise code review. Format your response as:" >> /tmp/prompt_final.txt
-          echo "" >> /tmp/prompt_final.txt
-          echo "**Severity:** [info/warn/critical]" >> /tmp/prompt_final.txt
-          echo "" >> /tmp/prompt_final.txt
-          echo "**Summary:** [1-2 sentence overview]" >> /tmp/prompt_final.txt
-          echo "" >> /tmp/prompt_final.txt
-          echo "**Findings:**" >> /tmp/prompt_final.txt
-          echo "- [Key finding 1]" >> /tmp/prompt_final.txt
-          echo "" >> /tmp/prompt_final.txt
-          echo "**Recommendations:**" >> /tmp/prompt_final.txt
-          echo "- [Specific actionable recommendation]" >> /tmp/prompt_final.txt
-          echo "" >> /tmp/prompt_final.txt
-          echo "Keep it concise and actionable." >> /tmp/prompt_final.txt
+          # Build complete prompt
+          {
+            cat /tmp/role_instruction.txt
+            echo ""
+            echo "## Pull Request Details"
+            echo "- Repository: ${{ github.repository }}"
+            echo "- PR: #${{ github.event.pull_request.number }}"
+            echo "- Title: ${{ github.event.pull_request.title }}"
+            echo "- Author: ${{ github.event.pull_request.user.login }}"
+            echo ""
+            echo "## Changed Files"
+            cat /tmp/changed_files.txt
+            echo ""
+            echo "## Code Changes"
+            echo '```diff'
+            head -c 30000 /tmp/pr_diff.txt
+            echo '```'
+            echo ""
+            echo "Provide a concise code review. Format your response as:"
+            echo ""
+            echo "**Severity:** [info/warn/critical]"
+            echo ""
+            echo "**Summary:** [1-2 sentence overview]"
+            echo ""
+            echo "**Findings:**"
+            echo "- [Key finding 1]"
+            echo ""
+            echo "**Recommendations:**"
+            echo "- [Specific actionable recommendation]"
+            echo ""
+            echo "Keep it concise and actionable."
+          } > /tmp/prompt_final.txt
           
           # Build JSON payload properly
           PROMPT_JSON=$(cat /tmp/prompt_final.txt | jq -Rs .)
