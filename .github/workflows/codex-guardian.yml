@@ -138,13 +138,11 @@ jobs:
           # Call OpenAI API using Python (avoids all bash/JSON escaping issues)
           python3 $GITHUB_WORKSPACE/.github/scripts/call_openai.py
           
-          # Save to GitHub output with unique delimiter
-          DELIMITER="EOF_$(date +%s)_${RANDOM}"
-          {
-            echo "review<<${DELIMITER}"
-            cat /tmp/review.txt
-            echo "${DELIMITER}"
-          } >> $GITHUB_OUTPUT
+          # Read review and save to output (use printf to avoid newline issues)
+          REVIEW_CONTENT=$(cat /tmp/review.txt)
+          echo "review<<GHADELIMITER" >> $GITHUB_OUTPUT
+          printf '%s\n' "$REVIEW_CONTENT" >> $GITHUB_OUTPUT
+          echo "GHADELIMITER" >> $GITHUB_OUTPUT
       
       - name: Parse severity
         id: parse
