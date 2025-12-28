@@ -71,54 +71,53 @@ jobs:
         run: |
           set -euo pipefail
           
-          # Debug: Show what we're parsing
-          echo "📋 Files to write:"
-          echo '${{ inputs.files }}' | jq -r 'keys[]'
-          echo ""
-          
-          echo '${{ inputs.files }}' | jq -r 'to_entries[] | @json' | while IFS= read -r entry; do
-            filename=$(echo "$entry" | jq -r '.key')
-            content=$(echo "$entry" | jq -r '.value')
+          # Parse and write each file
+          echo '${{ inputs.files }}' | jq -c 'to_entries[]' | while read -r entry; do
+            # Extract filename and content
+            filename=$(echo "$entry" | jq -r '.key // empty')
+            content=$(echo "$entry" | jq -r '.value // empty')
             
-            echo "🔍 Processing: '$filename'"
-            
-            # Validate filename
+            # Skip if filename is null, empty, or just whitespace
             if [ -z "$filename" ] || [ "$filename" = "null" ]; then
-              echo "❌ Invalid filename"
-              exit 1
+              echo "⚠️  Skipping entry with empty/null key"
+              continue
             fi
             
-            # Remove leading/trailing slashes
+            # Normalize filename: remove leading/trailing slashes and whitespace
+            filename=$(echo "$filename" | xargs)
             filename="${filename#/}"
             filename="${filename%/}"
             
-            # Skip if filename is empty after cleaning
+            # Validate filename after normalization
             if [ -z "$filename" ]; then
-              echo "❌ Empty filename after normalization"
-              exit 1
+              echo "⚠️  Skipping entry with empty filename after normalization"
+              continue
             fi
             
-            # Check if it looks like a directory (ends with /)
-            if [[ "$filename" == */ ]]; then
+            # Skip directory entries
+            if [[ "$filename" =~ /$ ]]; then
               echo "⚠️  Skipping directory entry: $filename"
               continue
             fi
             
-            # Construct full filepath
-            filepath="${{ inputs.target_path }}/${filename}"
-            
-            # Ensure we're not writing to a directory
-            if [ -d "$filepath" ]; then
-              echo "❌ Target path is already a directory: $filepath"
+            # Ensure filename doesn't contain dangerous patterns
+            if [[ "$filename" == *".."* ]]; then
+              echo "❌ Invalid filename contains '..': $filename"
               exit 1
             fi
             
-            # Create parent directory
+            # Build full filepath
+            filepath="${{ inputs.target_path }}/${filename}"
+            
+            echo "📝 Writing: $filepath"
+            
+            # Create parent directory if needed
             mkdir -p "$(dirname "$filepath")"
             
-            # Write file
-            echo "✍️  Writing $filepath"
+            # Write the file
             printf '%s' "$content" > "$filepath"
+            
+            echo "✅ Created: $filepath"
           done
 
       # 5️⃣ Configure git identity
@@ -180,5 +179,4 @@ jobs:
             codex
             guardian
             automated
-
 
