@@ -1,13 +1,13 @@
-name: Neo Orchestrator
+name: Neo Orchestrator (PM + Senior Engineer)
 
 on:
-  workflow_call:
-    inputs:
-      enable_automation:
-        description: "Master switch for Neo automation"
-        required: false
-        type: boolean
-        default: true
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Prevent duplicate runs
+concurrency:
+  group: neo-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -15,17 +15,20 @@ permissions:
   issues: write
 
 jobs:
-  # -------------------------------------------------
-  # 0. Load existing Neo memory (cost guard)
-  # -------------------------------------------------
-  load_memory:
-    name: Load Neo Decision Memory
+  # =================================================
+  # 0. LOAD MEMORY (Cost Guard - Prevent Reruns)
+  # =================================================
+  neo_memory_check:
+    name: 🧠 Check Neo Memory
     runs-on: ubuntu-latest
     outputs:
       has_memory: ${{ steps.check.outputs.has_memory }}
+      last_commit: ${{ steps.check.outputs.last_commit }}
+    
     steps:
-      - uses: actions/github-script@v7
+      - name: Check for existing Neo decision
         id: check
+        uses: actions/github-script@v7
         with:
           script: |
             const { data: comments } = await github.rest.issues.listComments({
@@ -38,121 +41,429 @@ jobs:
               c.body && c.body.includes("🧠 Neo Decision Memory")
             );
 
-            core.setOutput("has_memory", memory ? "true" : "false");
+            if (memory) {
+              // Extract last commit from memory
+              const match = memory.body.match(/Commit:\s*`([^`]+)`/);
+              const lastCommit = match ? match[1] : '';
+              
+              core.setOutput("has_memory", "true");
+              core.setOutput("last_commit", lastCommit);
+              
+              console.log("✅ Found existing Neo memory");
+              console.log(`Last commit reviewed: ${lastCommit}`);
+            } else {
+              core.setOutput("has_memory", "false");
+              core.setOutput("last_commit", "");
+              
+              console.log("ℹ️  No Neo memory found - first run");
+            }
 
-  # -------------------------------------------------
-  # 1. Neo decision engine
-  # -------------------------------------------------
-  neo:
-    name: Neo Decision Engine
-    needs: load_memory
-    if: inputs.enable_automation == true && needs.load_memory.outputs.has_memory != 'true'
+  # =================================================
+  # 1. NEO DECISION ENGINE (The Brain)
+  # =================================================
+  neo_decide:
+    name: 🤖 Neo Decision Engine
+    needs: neo_memory_check
+    if: needs.neo_memory_check.outputs.has_memory != 'true' || github.event.pull_request.head.sha != needs.neo_memory_check.outputs.last_commit
     runs-on: ubuntu-latest
     outputs:
       decision: ${{ steps.decide.outputs.decision }}
-
+      review_architect: ${{ steps.decide.outputs.review_architect }}
+      review_security: ${{ steps.decide.outputs.review_security }}
+      review_qa: ${{ steps.decide.outputs.review_qa }}
+      priority: ${{ steps.decide.outputs.priority }}
+      reasoning: ${{ steps.decide.outputs.reasoning }}
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - id: decide
-        name: Evaluate PR intent
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Analyze PR changes
+        id: analyze
         run: |
-          git fetch origin main
-          FILES_CHANGED=$(git diff --name-only origin/main...HEAD)
-
-          if [ -n "$FILES_CHANGED" ] && \
-             echo "$FILES_CHANGED" | grep -qiE '\.(md|txt)$' && \
-             ! echo "$FILES_CHANGED" | grep -qiEv '\.(md|txt)$'; then
-            echo "decision=SKIP_AUTOMATION" >> $GITHUB_OUTPUT
+          # Fetch base branch
+          git fetch origin ${{ github.base_ref }}
+          
+          # Get changed files
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          FILE_COUNT=$(echo "$CHANGED_FILES" | wc -l)
+          
+          echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
+          
+          # Categorize changes
+          HAS_CODE=false
+          HAS_TESTS=false
+          HAS_DOCS=false
+          HAS_CONFIG=false
+          HAS_DEPS=false
+          
+          while IFS= read -r file; do
+            case "$file" in
+              *.js|*.jsx|*.ts|*.tsx|*.py|*.java|*.go|*.rb|*.php|*.c|*.cpp|*.cs)
+                HAS_CODE=true
+                ;;
+              *test*|*spec*|*.test.*|*.spec.*)
+                HAS_TESTS=true
+                ;;
+              *.md|*.txt|docs/*)
+                HAS_DOCS=true
+                ;;
+              *.yml|*.yaml|*.json|*.toml|Dockerfile|docker-compose*)
+                HAS_CONFIG=true
+                ;;
+              package*.json|requirements.txt|Gemfile|go.mod|pom.xml)
+                HAS_DEPS=true
+                ;;
+            esac
+          done <<< "$CHANGED_FILES"
+          
+          echo "has_code=$HAS_CODE" >> $GITHUB_OUTPUT
+          echo "has_tests=$HAS_TESTS" >> $GITHUB_OUTPUT
+          echo "has_docs=$HAS_DOCS" >> $GITHUB_OUTPUT
+          echo "has_config=$HAS_CONFIG" >> $GITHUB_OUTPUT
+          echo "has_deps=$HAS_DEPS" >> $GITHUB_OUTPUT
+          
+          # Get diff stats
+          ADDITIONS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{sum+=$1} END {print sum}')
+          DELETIONS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{sum+=$2} END {print sum}')
+          
+          echo "additions=${ADDITIONS:-0}" >> $GITHUB_OUTPUT
+          echo "deletions=${DELETIONS:-0}" >> $GITHUB_OUTPUT
+      
+      - name: Neo makes decision
+        id: decide
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          FILE_COUNT: ${{ steps.analyze.outputs.file_count }}
+          HAS_CODE: ${{ steps.analyze.outputs.has_code }}
+          HAS_TESTS: ${{ steps.analyze.outputs.has_tests }}
+          HAS_DOCS: ${{ steps.analyze.outputs.has_docs }}
+          HAS_CONFIG: ${{ steps.analyze.outputs.has_config }}
+          HAS_DEPS: ${{ steps.analyze.outputs.has_deps }}
+          ADDITIONS: ${{ steps.analyze.outputs.additions }}
+          DELETIONS: ${{ steps.analyze.outputs.deletions }}
+        run: |
+          echo "🤖 Neo analyzing PR..."
+          echo ""
+          echo "PR: $PR_TITLE"
+          echo "Author: $PR_AUTHOR"
+          echo "Files changed: $FILE_COUNT"
+          echo "Lines: +$ADDITIONS -$DELETIONS"
+          echo ""
+          
+          # Default decision
+          DECISION="PROCEED"
+          REVIEW_ARCHITECT=false
+          REVIEW_SECURITY=false
+          REVIEW_QA=false
+          PRIORITY="normal"
+          REASONING=""
+          
+          # Rule 1: Skip docs-only changes
+          if [ "$HAS_DOCS" = "true" ] && \
+             [ "$HAS_CODE" = "false" ] && \
+             [ "$HAS_CONFIG" = "false" ]; then
+            DECISION="SKIP"
+            REASONING="📝 Documentation-only changes - no code review needed"
+            
+          # Rule 2: Security review for deps or config
+          elif [ "$HAS_DEPS" = "true" ] || [ "$HAS_CONFIG" = "true" ]; then
+            REVIEW_SECURITY=true
+            REVIEW_QA=true
+            PRIORITY="high"
+            REASONING="🔒 Dependencies or config changed - security + QA review required"
+            
+          # Rule 3: Architecture review for large changes
+          elif [ "$FILE_COUNT" -gt 10 ] || [ "$ADDITIONS" -gt 500 ]; then
+            REVIEW_ARCHITECT=true
+            REVIEW_SECURITY=true
+            REVIEW_QA=true
+            PRIORITY="high"
+            REASONING="🏗️ Large change detected - full review suite required"
+            
+          # Rule 4: Missing tests = QA review
+          elif [ "$HAS_CODE" = "true" ] && [ "$HAS_TESTS" = "false" ]; then
+            REVIEW_QA=true
+            PRIORITY="normal"
+            REASONING="✅ Code changes without tests - QA review needed"
+            
+          # Rule 5: Small code changes = general review only
+          elif [ "$HAS_CODE" = "true" ]; then
+            PRIORITY="low"
+            REASONING="✨ Standard code changes - general review sufficient"
+            
+          # Rule 6: Everything else
           else
-            echo "decision=PROCEED" >> $GITHUB_OUTPUT
+            REASONING="ℹ️ Standard PR - general review"
           fi
+          
+          # Output decisions
+          echo "decision=$DECISION" >> $GITHUB_OUTPUT
+          echo "review_architect=$REVIEW_ARCHITECT" >> $GITHUB_OUTPUT
+          echo "review_security=$REVIEW_SECURITY" >> $GITHUB_OUTPUT
+          echo "review_qa=$REVIEW_QA" >> $GITHUB_OUTPUT
+          echo "priority=$PRIORITY" >> $GITHUB_OUTPUT
+          
+          echo "reasoning<<EOF" >> $GITHUB_OUTPUT
+          echo "$REASONING" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Log decision
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🧠 NEO DECISION"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Decision: $DECISION"
+          echo "Priority: $PRIORITY"
+          echo "Reviews:"
+          echo "  - Architect: $REVIEW_ARCHITECT"
+          echo "  - Security: $REVIEW_SECURITY"
+          echo "  - QA: $REVIEW_QA"
+          echo ""
+          echo "Reasoning: $REASONING"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  # -------------------------------------------------
-  # 2. Cost gate (policy hook)
-  # -------------------------------------------------
-  neo_cost_gate:
-    name: Neo Cost Gate
-    needs: neo
-    runs-on: ubuntu-latest
-    outputs:
-      allowed: ${{ steps.cost.outputs.allowed }}
-    steps:
-      - id: cost
-        run: |
-          echo "allowed=true" >> "$GITHUB_OUTPUT"
-
-  # -------------------------------------------------
-  # 3. Reviews (Codex Guardian)
-  # -------------------------------------------------
-  architect_review:
-    name: Architect Review
-    needs: [neo, neo_cost_gate]
-    if: needs.neo.outputs.decision == 'PROCEED'
+  # =================================================
+  # 2. GENERAL REVIEW (Always runs if not skipped)
+  # =================================================
+  general_review:
+    name: 📋 General Review
+    needs: neo_decide
+    if: needs.neo_decide.outputs.decision == 'PROCEED'
     uses: ./.github/workflows/codex-guardian.yml
-    secrets: inherit
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    with:
+      role: general
+
+  # =================================================
+  # 3. SPECIALIZED REVIEWS (Conditional)
+  # =================================================
+  architect_review:
+    name: 🏗️ Architecture Review
+    needs: neo_decide
+    if: needs.neo_decide.outputs.decision == 'PROCEED' && needs.neo_decide.outputs.review_architect == 'true'
+    uses: ./.github/workflows/codex-guardian.yml
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    with:
+      role: architect
 
   security_review:
-    name: Security Review
-    needs: [neo, neo_cost_gate]
-    if: needs.neo.outputs.decision == 'PROCEED'
+    name: 🔒 Security Review
+    needs: neo_decide
+    if: needs.neo_decide.outputs.decision == 'PROCEED' && needs.neo_decide.outputs.review_security == 'true'
     uses: ./.github/workflows/codex-guardian.yml
-    secrets: inherit
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    with:
+      role: security
 
   qa_review:
-    name: QA Review
-    needs: [neo, neo_cost_gate]
-    if: needs.neo.outputs.decision == 'PROCEED'
+    name: ✅ QA Review
+    needs: neo_decide
+    if: needs.neo_decide.outputs.decision == 'PROCEED' && needs.neo_decide.outputs.review_qa == 'true'
     uses: ./.github/workflows/codex-guardian.yml
-    secrets: inherit
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    with:
+      role: qa
 
-  # -------------------------------------------------
-  # 4. Aggregate signals
-  # -------------------------------------------------
+  # =================================================
+  # 4. AGGREGATE RESULTS
+  # =================================================
   neo_aggregate:
-    name: Neo Aggregate Signals
-    needs: [architect_review, security_review, qa_review]
+    name: 📊 Neo Aggregation
+    needs: [neo_decide, general_review, architect_review, security_review, qa_review]
+    if: always() && needs.neo_decide.outputs.decision == 'PROCEED'
     runs-on: ubuntu-latest
     outputs:
-      severity: ${{ steps.out.outputs.severity }}
-      confidence: ${{ steps.out.outputs.confidence }}
+      max_severity: ${{ steps.aggregate.outputs.max_severity }}
+      gate_status: ${{ steps.aggregate.outputs.gate_status }}
+    
     steps:
-      - id: out
+      - name: Aggregate review results
+        id: aggregate
         run: |
-          echo "severity=info" >> "$GITHUB_OUTPUT"
-          echo "confidence=high" >> "$GITHUB_OUTPUT"
+          # Get all severities
+          GENERAL="${{ needs.general_review.outputs.severity || 'info' }}"
+          ARCHITECT="${{ needs.architect_review.outputs.severity || 'info' }}"
+          SECURITY="${{ needs.security_review.outputs.severity || 'info' }}"
+          QA="${{ needs.qa_review.outputs.severity || 'info' }}"
+          
+          echo "Review severities:"
+          echo "  General: $GENERAL"
+          echo "  Architect: $ARCHITECT"
+          echo "  Security: $SECURITY"
+          echo "  QA: $QA"
+          
+          # Determine max severity
+          MAX_SEVERITY="info"
+          
+          for sev in "$GENERAL" "$ARCHITECT" "$SECURITY" "$QA"; do
+            if [ "$sev" = "critical" ]; then
+              MAX_SEVERITY="critical"
+              break
+            elif [ "$sev" = "warn" ] && [ "$MAX_SEVERITY" != "critical" ]; then
+              MAX_SEVERITY="warn"
+            fi
+          done
+          
+          echo "max_severity=$MAX_SEVERITY" >> $GITHUB_OUTPUT
+          
+          # Gate decision
+          if [ "$MAX_SEVERITY" = "critical" ]; then
+            GATE_STATUS="BLOCKED"
+          else
+            GATE_STATUS="PASSED"
+          fi
+          
+          echo "gate_status=$GATE_STATUS" >> $GITHUB_OUTPUT
+          
+          echo ""
+          echo "Max severity: $MAX_SEVERITY"
+          echo "Gate status: $GATE_STATUS"
 
-  # -------------------------------------------------
-  # 5. Merge gate (critical + high only)
-  # -------------------------------------------------
-  neo_gate:
-    name: Neo Merge Gate
-    needs: [neo, neo_aggregate]
-    if: needs.neo.outputs.decision == 'PROCEED'
+  # =================================================
+  # 5. POST UNIFIED REVIEW
+  # =================================================
+  neo_post_review:
+    name: 💬 Post Neo Review
+    needs: [neo_decide, general_review, architect_review, security_review, qa_review, neo_aggregate]
+    if: always() && needs.neo_decide.outputs.decision == 'PROCEED'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
     steps:
-      - run: echo "Gate passed"
+      - name: Build review comment
+        id: build
+        run: |
+          # Build unified review
+          cat > /tmp/neo_review.md << 'EOFMARKER'
+          ## 🤖 Neo Review - Codexium V4
+          
+          **Priority:** `${{ needs.neo_decide.outputs.priority }}`  
+          **Max Severity:** `${{ needs.neo_aggregate.outputs.max_severity }}`  
+          **Gate Status:** ${{ needs.neo_aggregate.outputs.gate_status == 'PASSED' && '✅ PASSED' || '❌ BLOCKED' }}
+          
+          ### 🧠 Neo's Assessment
+          
+          ${{ needs.neo_decide.outputs.reasoning }}
+          
+          ---
+          
+          ### 📋 General Review
+          
+          ${{ needs.general_review.outputs.review_output || '_Not run_' }}
+          
+          EOFMARKER
+          
+          # Add architect if ran
+          if [ "${{ needs.architect_review.result }}" = "success" ]; then
+            cat >> /tmp/neo_review.md << 'EOFMARKER'
+          
+          ---
+          
+          ### 🏗️ Architecture Review
+          
+          ${{ needs.architect_review.outputs.review_output }}
+          
+          EOFMARKER
+          fi
+          
+          # Add security if ran
+          if [ "${{ needs.security_review.result }}" = "success" ]; then
+            cat >> /tmp/neo_review.md << 'EOFMARKER'
+          
+          ---
+          
+          ### 🔒 Security Review
+          
+          ${{ needs.security_review.outputs.review_output }}
+          
+          EOFMARKER
+          fi
+          
+          # Add QA if ran
+          if [ "${{ needs.qa_review.result }}" = "success" ]; then
+            cat >> /tmp/neo_review.md << 'EOFMARKER'
+          
+          ---
+          
+          ### ✅ QA Review
+          
+          ${{ needs.qa_review.outputs.review_output }}
+          
+          EOFMARKER
+          fi
+          
+          # Footer
+          cat >> /tmp/neo_review.md << 'EOFMARKER'
+          
+          ---
+          
+          <sub>Powered by **Neo** (Codexium V4) | $(date -u +"%Y-%m-%d %H:%M UTC")</sub>
+          EOFMARKER
+          
+          cat /tmp/neo_review.md
+      
+      - name: Find existing comment
+        id: find
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: 'Neo Review - Codexium V4'
+      
+      - name: Post or update comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: /tmp/neo_review.md
+          edit-mode: replace
 
-  # -------------------------------------------------
-  # 6. Persist Neo memory (Section 7)
-  # -------------------------------------------------
-  neo_memory:
-    name: Persist Neo Decision Memory
-    needs: [neo, neo_gate, neo_aggregate]
+  # =================================================
+  # 6. PERSIST NEO MEMORY
+  # =================================================
+  neo_persist_memory:
+    name: 🧠 Persist Neo Memory
+    needs: [neo_decide, neo_aggregate]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
     steps:
-      - uses: actions/github-script@v7
+      - name: Save Neo decision to PR
+        uses: actions/github-script@v7
         with:
           script: |
+            const decision = '${{ needs.neo_decide.outputs.decision || 'SKIPPED' }}';
+            const severity = '${{ needs.neo_aggregate.outputs.max_severity || 'n/a' }}';
+            const gate = '${{ needs.neo_aggregate.outputs.gate_status || 'n/a' }}';
+            const commit = context.payload.pull_request.head.sha;
+            
             const body = [
               "### 🧠 Neo Decision Memory",
               "",
-              `- **Decision:** ${"${{ needs.neo.outputs.decision || 'UNKNOWN' }}"}`,
-              `- **Severity:** ${"${{ needs.neo_aggregate.outputs.severity || 'n/a' }}"}`,
-              `- **Confidence:** ${"${{ needs.neo_aggregate.outputs.confidence || 'n/a' }}"}`,
-              `- **Commit:** ${context.payload.pull_request.head.sha}`,
-              `- **Recorded at:** ${new Date().toISOString()}`
+              `- **Decision:** ${decision}`,
+              `- **Priority:** ${{ needs.neo_decide.outputs.priority || 'n/a' }}`,
+              `- **Max Severity:** ${severity}`,
+              `- **Gate Status:** ${gate}`,
+              `- **Commit:** \`${commit}\``,
+              `- **Recorded:** ${new Date().toISOString()}`,
+              "",
+              "_This prevents duplicate Neo runs for the same commit_"
             ].join("\n");
 
             await github.rest.issues.createComment({
@@ -162,30 +473,38 @@ jobs:
               body
             });
 
-            # -------------------------------------------------
-# 7. Telemetry (Section 9)
-# -------------------------------------------------
-  neo_telemetry:
-    name: Neo Telemetry (V4)
-    needs: [neo, neo_aggregate, load_memory]
-    if: always()
+  # =================================================
+  # 7. NEO SKIPPED (Docs-only path)
+  # =================================================
+  neo_skipped:
+    name: ⏭️ Neo Skipped
+    needs: neo_decide
+    if: needs.neo_decide.outputs.decision == 'SKIP'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
-
+    
     steps:
-    - name: Emit telemetry record
-      uses: actions/github-script@v7
-      with:
-        github-token: ${{ github.token }}
-        script: |
-          const body = [
-            "### 📊 Neo Telemetry (V4)",
-            "",
-            `- **Automation enabled:** ${process.env.NEO_AUTOMATION_ENABLED || 'unknown'}`,
-            `- **Neo ran:** ${{ needs.neo.result == 'success' }}`,
-            `- **Skipped (memory hit):** ${{ needs.load_memory.outputs.has_memory || 'false' }}`,
-            `- **Decision:** ${{ needs.neo.outputs.decision || 'UNKNOWN' }}`,
+      - name: Post skip notification
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              "## 🤖 Neo Review - Skipped",
+              "",
+              "${{ needs.neo_decide.outputs.reasoning }}",
+              "",
+              "No code review needed for this PR.",
+              "",
+              "<sub>Powered by **Neo** (Codexium V4)</sub>"
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body
+            });
 
 
 
