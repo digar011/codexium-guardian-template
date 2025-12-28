@@ -3,49 +3,193 @@ name: Codex Guardian Review
 on:
   workflow_call:
     inputs:
-      prompt:
-        required: true
-        type: string
-      model:
+      role:
+        description: "Review role (architect, security, qa, or general)"
         required: false
         type: string
-        default: gpt-4.1
+        default: "general"
     secrets:
       OPENAI_API_KEY:
         required: true
-
     outputs:
-      review:
-        description: "Codex Guardian review output"
-        value: ${{ jobs.codex.outputs.review }}
+      review_output:
+        description: "AI review content"
+        value: ${{ jobs.review.outputs.review_text }}
+      severity:
+        description: "Issue severity (info, warn, critical)"
+        value: ${{ jobs.review.outputs.severity }}
 
 jobs:
-  codex:
+  review:
+    name: ${{ inputs.role }} Review
     runs-on: ubuntu-latest
     outputs:
-      review: ${{ steps.export.outputs.review }}
-
+      review_text: ${{ steps.ai_review.outputs.review }}
+      severity: ${{ steps.parse.outputs.severity }}
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Run Codex review
-        id: codex
-        uses: openai/codex-action@v1
+      - name: Checkout PR
+        uses: actions/checkout@v4
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          model: ${{ inputs.model }}
-          prompt: |
-            Review this pull request.
-
-            You MUST output:
-            Severity: info | warn | critical
-            Confidence: low | medium | high
-            Notes:
-            - concise findings
-
-      - name: Export review output
-        id: export
+          fetch-depth: 0
+      
+      - name: Get PR diff
+        id: diff
         run: |
-          echo "review<<EOF" >> "$GITHUB_OUTPUT"
-          echo "${{ steps.codex.outputs.text }}" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          # Get the diff for this PR
+          git fetch origin ${{ github.base_ref }}
+          
+          # Create diff file
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr_diff.txt
+          
+          # Get list of changed files
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/changed_files.txt
+          
+          echo "files_changed=$(cat /tmp/changed_files.txt | wc -l)" >> $GITHUB_OUTPUT
+      
+      - name: Build review prompt
+        id: prompt
+        run: |
+          # Set role-specific instructions
+          case "${{ inputs.role }}" in
+            architect)
+              ROLE_INSTRUCTION="You are a senior software architect. Focus on:
+              - Design patterns and architecture decisions
+              - Code organization and modularity
+              - Scalability and maintainability
+              - Technical debt and refactoring opportunities"
+              ;;
+            security)
+              ROLE_INSTRUCTION="You are a security engineer. Focus on:
+              - Authentication and authorization issues
+              - Data validation and sanitization
+              - Sensitive data exposure
+              - Common vulnerabilities (SQL injection, XSS, CSRF, etc.)
+              - Dependency vulnerabilities"
+              ;;
+            qa)
+              ROLE_INSTRUCTION="You are a QA engineer. Focus on:
+              - Edge cases and error handling
+              - Test coverage gaps
+              - Input validation
+              - User experience issues
+              - Performance concerns"
+              ;;
+            *)
+              ROLE_INSTRUCTION="You are an experienced code reviewer. Provide balanced feedback on:
+              - Code quality and readability
+              - Potential bugs or issues
+              - Best practices
+              - Performance considerations"
+              ;;
+          esac
+          
+          # Save to file for API call
+          cat > /tmp/role_instruction.txt << 'EOF'
+          $ROLE_INSTRUCTION
+          EOF
+      
+      - name: Call GPT-4 for review
+        id: ai_review
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # Read the diff (truncate if too large for API)
+          DIFF_CONTENT=$(head -c 30000 /tmp/pr_diff.txt)
+          ROLE_INSTRUCTION=$(cat /tmp/role_instruction.txt)
+          
+          # Build the prompt
+          PROMPT="$ROLE_INSTRUCTION
+
+          ## Pull Request Details
+          - Repository: ${{ github.repository }}
+          - PR: #${{ github.event.pull_request.number }}
+          - Title: ${{ github.event.pull_request.title }}
+          - Author: ${{ github.event.pull_request.user.login }}
+
+          ## Changed Files
+          $(cat /tmp/changed_files.txt)
+
+          ## Code Changes
+          \`\`\`diff
+          $DIFF_CONTENT
+          \`\`\`
+
+          Provide a concise code review. Format your response as:
+
+          **Severity:** [info/warn/critical]
+
+          **Summary:** [1-2 sentence overview]
+
+          **Findings:**
+          - [Key finding 1]
+          - [Key finding 2]
+          - [etc.]
+
+          **Recommendations:**
+          - [Specific actionable recommendation]
+
+          Keep it concise and actionable."
+
+          # Call OpenAI API
+          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -d @- <<EOF
+          {
+            "model": "gpt-4-turbo-preview",
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are Codexium V4, an AI code reviewer. Be concise, specific, and constructive."
+              },
+              {
+                "role": "user",
+                "content": $(echo "$PROMPT" | jq -Rs .)
+              }
+            ],
+            "temperature": 0.3,
+            "max_tokens": 1500
+          }
+          EOF
+          )
+          
+          # Extract the review text
+          REVIEW_TEXT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
+          
+          # Check if we got an error
+          if echo "$RESPONSE" | jq -e '.error' > /dev/null; then
+            echo "❌ OpenAI API Error:"
+            echo "$RESPONSE" | jq '.error'
+            exit 1
+          fi
+          
+          # Save review to output
+          echo "review<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Also save to file for next step
+          echo "$REVIEW_TEXT" > /tmp/review.txt
+      
+      - name: Parse severity
+        id: parse
+        run: |
+          REVIEW=$(cat /tmp/review.txt)
+          
+          # Extract severity (default to info if not found)
+          if echo "$REVIEW" | grep -qi "critical"; then
+            echo "severity=critical" >> $GITHUB_OUTPUT
+          elif echo "$REVIEW" | grep -qi "warn"; then
+            echo "severity=warn" >> $GITHUB_OUTPUT
+          else
+            echo "severity=info" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Output review summary
+        run: |
+          echo "### 🤖 ${{ inputs.role }} Review Complete"
+          echo ""
+          echo "**Severity:** ${{ steps.parse.outputs.severity }}"
+          echo ""
+          cat /tmp/review.txt
