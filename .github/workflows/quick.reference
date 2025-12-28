@@ -1,0 +1,271 @@
+# Codexium V4 - Quick Reference
+
+## 🚀 Common Tasks
+
+### Trigger a Manual Review
+```bash
+# Go to: Actions → Codex Materializer → Run workflow
+# Or use GitHub CLI:
+gh workflow run codex-materialize.yml \
+  -f task_id="docs-update" \
+  -f target_path="docs" \
+  -f files='{"README.md": "# New Content"}'
+```
+
+### Create Test PR for Review
+```bash
+git checkout -b test-review
+echo "# Test" > test.md
+git add test.md
+git commit -m "test: trigger review"
+git push origin test-review
+# Then create PR on GitHub
+```
+
+### Check Workflow Logs
+```bash
+# Using GitHub CLI
+gh run list
+gh run view <run-id> --log
+
+# Or visit: https://github.com/YOUR_REPO/actions
+```
+
+### Update API Key
+```bash
+# Using GitHub CLI
+gh secret set OPENAI_API_KEY
+
+# Or manually:
+# Settings → Secrets → Actions → OPENAI_API_KEY → Update
+```
+
+---
+
+## 📋 File Locations
+
+```
+.github/workflows/
+├── codex-guardian.yml      # AI review engine (GPT-4)
+├── pr-review.yml           # PR review orchestrator
+└── codex-materialize.yml   # File generator
+
+DEPLOYMENT_GUIDE.md         # Full setup instructions
+validate-setup.sh           # Setup validation script
+```
+
+---
+
+## 🔧 Configuration
+
+### Enable Specialized Reviews
+
+Edit `.github/workflows/pr-review.yml`:
+
+```yaml
+# Uncomment these jobs:
+# - architect_review
+# - security_review
+# - qa_review
+
+# Add to post_review needs:
+needs: [general_review, architect_review, security_review]
+```
+
+**Cost impact:** 3x API calls per PR
+
+### Skip Reviews for Certain Files
+
+Edit `.github/workflows/pr-review.yml`, add to `should_run`:
+
+```yaml
+- name: Check changed files
+  run: |
+    FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+    
+    # Skip if only docs changed
+    if echo "$FILES" | grep -qvE '\.(md|txt)$'; then
+      echo "run_review=true" >> $GITHUB_OUTPUT
+    else
+      echo "run_review=false" >> $GITHUB_OUTPUT
+    fi
+```
+
+### Customize Review Prompts
+
+Edit `.github/workflows/codex-guardian.yml`:
+
+Find `case "${{ inputs.role }}" in` section and modify prompts.
+
+---
+
+## 💰 Cost Tracking
+
+### Check Current Usage
+```bash
+# OpenAI Dashboard
+open https://platform.openai.com/usage
+
+# GitHub Actions
+open https://github.com/settings/billing
+```
+
+### Estimate Monthly Cost
+
+| Reviews/Month | Avg Lines | Cost |
+|--------------|-----------|------|
+| 50 | 500 | ~$5 |
+| 200 | 500 | ~$20 |
+| 500 | 500 | ~$50 |
+
+**Formula:**
+```
+Cost = (Reviews × Tokens × Price) / 1M
+
+Where:
+- Tokens ≈ Lines × 3 (rough estimate)
+- Price = $10 input + $30 output per 1M tokens
+```
+
+---
+
+## 🐛 Quick Troubleshooting
+
+### Review not posting to PR?
+```bash
+# 1. Check workflow permissions
+# Settings → Actions → General → Workflow permissions
+# Enable: Read and write permissions + Create PRs
+
+# 2. Check secret is set
+gh secret list | grep OPENAI_API_KEY
+
+# 3. Check workflow logs
+gh run list --workflow pr-review.yml
+gh run view <run-id> --log
+```
+
+### Materializer failing?
+```bash
+# 1. Validate JSON
+echo '{"test.md": "content"}' | jq .
+
+# 2. Check for newlines (use \n)
+echo '{"file.md": "Line 1\nLine 2"}' | jq .
+
+# 3. Test manually
+# Actions → Codex Materializer → Run workflow
+```
+
+### API rate limit errors?
+```bash
+# Check OpenAI dashboard for limits
+# Solutions:
+# 1. Request increase from OpenAI
+# 2. Reduce review frequency
+# 3. Add retry logic to workflows
+```
+
+---
+
+## 📊 Workflow Inputs
+
+### codex-materialize.yml
+
+| Input | Example | Required |
+|-------|---------|----------|
+| task_id | `v4-docs-baseline` | ✅ |
+| target_path | `docs` | ✅ |
+| files | `{"README.md": "content"}` | ✅ |
+
+**JSON Format:**
+```json
+{
+  "file1.md": "# Title\n\nContent",
+  "dir/file2.txt": "Text content"
+}
+```
+
+### codex-guardian.yml
+
+| Input | Options | Default |
+|-------|---------|---------|
+| role | general, architect, security, qa | general |
+
+---
+
+## 🔗 Useful Links
+
+### Documentation
+- [Deployment Guide](DEPLOYMENT_GUIDE.md)
+- [OpenAI API Docs](https://platform.openai.com/docs)
+- [GitHub Actions Docs](https://docs.github.com/actions)
+
+### Tools
+- [YAML Validator](https://www.yamllint.com/)
+- [JSON Validator](https://jsonlint.com/)
+- [GitHub CLI](https://cli.github.com/)
+
+### Monitoring
+- [OpenAI Usage](https://platform.openai.com/usage)
+- [GitHub Actions Usage](https://github.com/settings/billing)
+- [Repository Actions](https://github.com/YOUR_REPO/actions)
+
+---
+
+## 🆘 Get Help
+
+### Error Messages
+
+**"Resource not accessible by integration"**
+→ Fix: Enable workflow permissions (Settings → Actions)
+
+**"Invalid JSON"**
+→ Fix: Validate at jsonlint.com, escape quotes
+
+**"No changes detected"**
+→ Fix: Files might already exist, check git diff
+
+**"Rate limit exceeded"**
+→ Fix: Wait or request OpenAI limit increase
+
+### Contact
+
+- GitHub Issues: Link to your repo's issues
+- Slack: #codexium channel
+- Docs: Your internal documentation
+
+---
+
+## 📝 Cheat Sheet
+
+```bash
+# Setup
+gh secret set OPENAI_API_KEY
+gh secret set SLACK_WEBHOOK_URL
+
+# Validate
+chmod +x validate-setup.sh
+./validate-setup.sh
+
+# Test PR review
+git checkout -b test && echo "test" > test.md
+git add . && git commit -m "test" && git push origin test
+
+# Test materializer
+gh workflow run codex-materialize.yml \
+  -f task_id=test \
+  -f target_path=test \
+  -f files='{"test.md":"# Test"}'
+
+# Check status
+gh run list --workflow pr-review.yml
+gh run view --log
+
+# Monitor costs
+open https://platform.openai.com/usage
+```
+
+---
+
+**Last Updated:** 2024 (Update this when you customize!)
