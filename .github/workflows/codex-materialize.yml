@@ -75,12 +75,16 @@ jobs:
             | jq -c 'to_entries[]' \
             | while read -r entry; do
 
+              if [ -z "$entry" ]; then
+                echo "⚠️ Skipping empty entry"
+                continue
+              fi
+
               filename="$(echo "$entry" | jq -r '.key')"
               content="$(echo "$entry" | jq -r '.value')"
 
-              # 🔒 HARD FAILS — NO NORMALIZATION
-              if [ "$filename" = "null" ] || [ -z "$filename" ]; then
-                echo "❌ Invalid filename (null or empty)"
+              if [ -z "$filename" ] || [ "$filename" = "null" ]; then
+                echo "❌ Invalid filename"
                 exit 1
               fi
 
@@ -101,6 +105,7 @@ jobs:
               echo "Writing $filepath"
               printf "%s\n" "$content" > "$filepath"
             done
+e
 
 
 
