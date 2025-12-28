@@ -150,11 +150,17 @@ jobs:
           fi
           git commit -m "codex: materialize ${{ inputs.task_id }}"
 
+      # 8.5️⃣ Delete remote branch if it exists
+      - name: Delete remote branch if exists
+        shell: bash
+        run: |
+          git push origin --delete codex/${{ inputs.task_id }} || echo "Branch doesn't exist on remote, continuing..."
+
       # 9️⃣ Push branch
       - name: Push branch
         shell: bash
         run: |
-          git push --force-with-lease origin codex/${{ inputs.task_id }}
+          git push --force origin codex/${{ inputs.task_id }}
 
       # 🔟 Open pull request
       - name: Open pull request
