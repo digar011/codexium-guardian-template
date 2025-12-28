@@ -38,6 +38,7 @@ jobs:
     steps:
       # 0️⃣ Guardian kill switch (MUST be first)
       - name: Guardian kill switch
+        shell: bash
         run: |
           if [ "${NEO_AUTOMATION_ENABLED}" != "true" ]; then
             echo "❌ NEO automation is disabled. Exiting."
@@ -54,26 +55,30 @@ jobs:
 
       # 2️⃣ Validate JSON payload early
       - name: Validate JSON payload
+        shell: bash
         run: |
           echo '${{ inputs.files }}' | jq type > /dev/null
 
       # 3️⃣ Create target directory
       - name: Create target directory
+        shell: bash
         run: |
           mkdir -p "${{ inputs.target_path }}"
 
-      # 4️⃣ Write files
+      # 4️⃣ Write files (base64-safe, directory-safe)
       - name: Write files
+        shell: bash
         run: |
           echo '${{ inputs.files }}' \
-          | jq -r 'to_entries[] | @base64' \
-          | while read -r entry; do
-              _jq() {
+            | jq -r 'to_entries[] | @base64' \
+            | while read -r entry; do
+
+              decode() {
                 echo "$entry" | base64 --decode | jq -r "$1"
               }
 
-              filename="$(_jq '.key')"
-              content="$(_jq '.value')"
+              filename="$(decode '.key')"
+              content="$(decode '.value')"
 
               if [ -z "$filename" ]; then
                 echo "❌ Empty filename detected"
@@ -87,26 +92,29 @@ jobs:
               printf "%s\n" "$content" > "$filepath"
             done
 
-
       # 5️⃣ Configure git identity
       - name: Configure git identity
+        shell: bash
         run: |
           git config user.name "codexium-guardian-bot"
           git config user.email "guardian@codexium.ai"
 
       # 6️⃣ Ensure git remote exists
       - name: Configure git remote
+        shell: bash
         run: |
           git remote remove origin || true
           git remote add origin https://github.com/${{ github.repository }}.git
 
       # 7️⃣ Create branch
       - name: Create branch
+        shell: bash
         run: |
           git checkout -b codex/${{ inputs.task_id }}
 
       # 8️⃣ Commit changes
       - name: Commit changes
+        shell: bash
         run: |
           git add "${{ inputs.target_path }}"
           if git diff --cached --quiet; then
@@ -117,6 +125,7 @@ jobs:
 
       # 9️⃣ Push branch
       - name: Push branch
+        shell: bash
         run: |
           git push origin codex/${{ inputs.task_id }}
 
@@ -142,5 +151,6 @@ jobs:
             codex
             guardian
             automated
+
 
 
