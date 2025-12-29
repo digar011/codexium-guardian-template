@@ -285,7 +285,9 @@ jobs:
                   content = file_info['content']
                   
                   # Create directory if needed
-                  os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                  dir_path = os.path.dirname(filepath)
+              if dir_path:
+                  os.makedirs(dir_path, exist_ok=True)
                   
                   # Write file
                   with open(filepath, 'w') as f:
@@ -393,4 +395,6 @@ jobs:
   # =================================================
   # Neo V4 will automatically trigger via pull_request event
   # No manual trigger needed - neo-orchestrator.yml handles it
+
+
 
