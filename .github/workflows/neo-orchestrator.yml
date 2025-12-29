@@ -71,6 +71,11 @@ jobs:
       review_architect: ${{ steps.decide.outputs.review_architect }}
       review_security: ${{ steps.decide.outputs.review_security }}
       review_qa: ${{ steps.decide.outputs.review_qa }}
+      review_ui_ux: ${{ steps.decide.outputs.review_ui_ux }}
+      review_critic: ${{ steps.decide.outputs.review_critic }}
+      review_seo: ${{ steps.decide.outputs.review_seo }}
+      review_performance: ${{ steps.decide.outputs.review_performance }}
+      review_n8n: ${{ steps.decide.outputs.review_n8n }}
       priority: ${{ steps.decide.outputs.priority }}
       reasoning: ${{ steps.decide.outputs.reasoning }}
     
@@ -164,6 +169,11 @@ jobs:
           REVIEW_ARCHITECT=false
           REVIEW_SECURITY=false
           REVIEW_QA=false
+          REVIEW_UI_UX=false
+          REVIEW_CRITIC=false
+          REVIEW_SEO=false
+          REVIEW_PERFORMANCE=false
+          REVIEW_N8N=false
           PRIORITY="normal"
           REASONING=""
           
@@ -186,8 +196,9 @@ jobs:
             REVIEW_ARCHITECT=true
             REVIEW_SECURITY=true
             REVIEW_QA=true
+            REVIEW_CRITIC=true  # NEW: Critic reviews large PRs
             PRIORITY="high"
-            REASONING="🏗️ Large change detected - full review suite required"
+            REASONING="🏗️ Large change detected - full review suite + critic analysis required"
             
           # Rule 4: Missing tests = QA review
           elif [ "$HAS_CODE" = "true" ] && [ "$HAS_TESTS" = "false" ]; then
@@ -205,11 +216,62 @@ jobs:
             REASONING="ℹ️ Standard PR - general review"
           fi
           
+          # NEW: Check for frontend/UI changes (runs in addition to above rules)
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          if echo "$CHANGED_FILES" | grep -qE '\.(jsx?|tsx?|vue|svelte|css|scss|sass|less|html)$'; then
+            REVIEW_UI_UX=true
+            if [ -n "$REASONING" ]; then
+              REASONING="$REASONING
+🎨 UI/UX changes detected - accessibility and design review included"
+            else
+              REASONING="🎨 UI/UX changes detected - design and accessibility review needed"
+            fi
+          fi
+          
+          # NEW: Check for SEO-impacting changes
+          if echo "$CHANGED_FILES" | grep -qE '(pages/|routes/|sitemap|robots\.txt|meta|head\.tsx?|layout\.tsx?)'; then
+            REVIEW_SEO=true
+            if [ -n "$REASONING" ]; then
+              REASONING="$REASONING
+🔍 SEO-critical changes - search visibility review included"
+            else
+              REASONING="🔍 SEO-critical changes detected - search visibility review needed"
+            fi
+          fi
+          
+          # NEW: Check for performance-impacting changes
+          if echo "$CHANGED_FILES" | grep -qE '\.(jpg|jpeg|png|gif|webp|avif|woff2?|ttf|eot)$' || \
+             echo "$CHANGED_FILES" | grep -qE 'package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml'; then
+            REVIEW_PERFORMANCE=true
+            if [ -n "$REASONING" ]; then
+              REASONING="$REASONING
+⚡ Performance-impacting changes - Core Web Vitals review included"
+            else
+              REASONING="⚡ Assets or dependencies changed - performance review needed"
+            fi
+          fi
+          
+          # NEW: Check for n8n workflow changes
+          if echo "$CHANGED_FILES" | grep -qE '(workflows?|n8n)/.*\.json$|\.n8n/.*\.json$'; then
+            REVIEW_N8N=true
+            if [ -n "$REASONING" ]; then
+              REASONING="$REASONING
+🔄 n8n automation changes - workflow reliability and security review needed"
+            else
+              REASONING="🔄 n8n workflow detected - automation review required"
+            fi
+          fi
+          
           # Output decisions
           echo "decision=$DECISION" >> $GITHUB_OUTPUT
           echo "review_architect=$REVIEW_ARCHITECT" >> $GITHUB_OUTPUT
           echo "review_security=$REVIEW_SECURITY" >> $GITHUB_OUTPUT
           echo "review_qa=$REVIEW_QA" >> $GITHUB_OUTPUT
+          echo "review_ui_ux=$REVIEW_UI_UX" >> $GITHUB_OUTPUT
+          echo "review_critic=$REVIEW_CRITIC" >> $GITHUB_OUTPUT
+          echo "review_seo=$REVIEW_SEO" >> $GITHUB_OUTPUT
+          echo "review_performance=$REVIEW_PERFORMANCE" >> $GITHUB_OUTPUT
+          echo "review_n8n=$REVIEW_N8N" >> $GITHUB_OUTPUT
           echo "priority=$PRIORITY" >> $GITHUB_OUTPUT
           
           echo "reasoning<<EOF" >> $GITHUB_OUTPUT
@@ -227,6 +289,11 @@ jobs:
           echo "  - Architect: $REVIEW_ARCHITECT"
           echo "  - Security: $REVIEW_SECURITY"
           echo "  - QA: $REVIEW_QA"
+          echo "  - UI/UX: $REVIEW_UI_UX"
+          echo "  - Critic: $REVIEW_CRITIC"
+          echo "  - SEO: $REVIEW_SEO"
+          echo "  - Performance: $REVIEW_PERFORMANCE"
+          echo "  - n8n Automation: $REVIEW_N8N"
           echo ""
           echo "Reasoning: $REASONING"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -277,12 +344,62 @@ jobs:
     with:
       role: qa
 
+  ui_ux_review:
+    name: 🎨 UI/UX Review
+    needs: neo_decide
+    if: needs.neo_decide.outputs.decision == 'PROCEED' && needs.neo_decide.outputs.review_ui_ux == 'true'
+    uses: ./.github/workflows/codex-guardian.yml
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    with:
+      role: ui_ux
+
+  critic_review:
+    name: 🔍 Critical Review
+    needs: neo_decide
+    if: needs.neo_decide.outputs.decision == 'PROCEED' && needs.neo_decide.outputs.review_critic == 'true'
+    uses: ./.github/workflows/codex-guardian.yml
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    with:
+      role: critic
+
+  seo_review:
+    name: 🔍 SEO Review
+    needs: neo_decide
+    if: needs.neo_decide.outputs.decision == 'PROCEED' && needs.neo_decide.outputs.review_seo == 'true'
+    uses: ./.github/workflows/codex-guardian.yml
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    with:
+      role: seo
+
+  performance_review:
+    name: ⚡ Performance Review
+    needs: neo_decide
+    if: needs.neo_decide.outputs.decision == 'PROCEED' && needs.neo_decide.outputs.review_performance == 'true'
+    uses: ./.github/workflows/codex-guardian.yml
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    with:
+      role: performance
+
+  n8n_review:
+    name: 🔄 n8n Automation Review
+    needs: neo_decide
+    if: needs.neo_decide.outputs.decision == 'PROCEED' && needs.neo_decide.outputs.review_n8n == 'true'
+    uses: ./.github/workflows/codex-guardian.yml
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    with:
+      role: n8n
+
   # =================================================
   # 4. AGGREGATE RESULTS
   # =================================================
   neo_aggregate:
     name: 📊 Neo Aggregation
-    needs: [neo_decide, general_review, architect_review, security_review, qa_review]
+    needs: [neo_decide, general_review, architect_review, security_review, qa_review, ui_ux_review, critic_review, seo_review, performance_review, n8n_review]
     if: always() && needs.neo_decide.outputs.decision == 'PROCEED'
     runs-on: ubuntu-latest
     outputs:
@@ -505,7 +622,3 @@ jobs:
               issue_number: context.payload.pull_request.number,
               body
             });
-
-
-
-
