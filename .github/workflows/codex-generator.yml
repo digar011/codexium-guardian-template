@@ -199,10 +199,10 @@ jobs:
         id: generate
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          REQUEST: ${{ github.event.inputs.request || github.event.client_payload.request }}
-          CONTEXT: ${{ github.event.inputs.context || github.event.client_payload.context }}
-          CONFIDENCE: ${{ needs.evaluate_request.outputs.confidence }}
-          SEVERITY: ${{ needs.evaluate_request.outputs.severity }}
+          REQUEST: ${{ github.event.inputs.request }}
+          CONTEXT: ${{ github.event.inputs.context }}
+          CONFIDENCE: ${{ steps.evaluate.outputs.confidence }}
+          SEVERITY: ${{ steps.evaluate.outputs.severity }}
         run: |
           python3 << 'PYTHON_SCRIPT'
           import os
@@ -217,7 +217,7 @@ jobs:
           
           # Generation Prompt
           prompt = f"""You are Codexium V4, an expert code generator. Generate complete, production-ready code files.
-
+          
           REQUEST: {request}
           CONTEXT: {context}
           
@@ -246,7 +246,7 @@ jobs:
             ],
             "summary": "Generated React login component with JWT authentication, form validation, and error handling. Includes unit tests.",
             "dependencies": ["react", "jwt-decode"],
-            "setup_instructions": "1. npm install\n2. Configure JWT_SECRET in .env\n3. Run tests with npm test"
+            "setup_instructions": "1. npm install\\n2. Configure JWT_SECRET in .env\\n3. Run tests with npm test"
           }}
           
           IMPORTANT:
@@ -284,10 +284,10 @@ jobs:
                   filepath = file_info['path']
                   content = file_info['content']
                   
-                  # Create directory if needed
+                  # Create directory if needed (handle root-level files)
                   dir_path = os.path.dirname(filepath)
-              if dir_path:
-                  os.makedirs(dir_path, exist_ok=True)
+                  if dir_path:
+                      os.makedirs(dir_path, exist_ok=True)
                   
                   # Write file
                   with open(filepath, 'w') as f:
@@ -299,26 +299,26 @@ jobs:
               # Create summary file
               summary_path = "CODEXIUM_GENERATION.md"
               with open(summary_path, 'w') as f:
-                  f.write(f"# Codexium V4 Generation Report\n\n")
-                  f.write(f"**Request:** {request}\n\n")
-                  f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-                  f.write(f"## Summary\n\n{result['summary']}\n\n")
-                  f.write(f"## Files Created\n\n")
+                  f.write(f"# Codexium V4 Generation Report\\n\\n")
+                  f.write(f"**Request:** {request}\\n\\n")
+                  f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\\n\\n")
+                  f.write(f"## Summary\\n\\n{result['summary']}\\n\\n")
+                  f.write(f"## Files Created\\n\\n")
                   for file_info in result['files']:
-                      f.write(f"- `{file_info['path']}` - {file_info['description']}\n")
-                  f.write(f"\n## Dependencies\n\n")
+                      f.write(f"- `{file_info['path']}` - {file_info['description']}\\n")
+                  f.write(f"\\n## Dependencies\\n\\n")
                   for dep in result.get('dependencies', []):
-                      f.write(f"- {dep}\n")
-                  f.write(f"\n## Setup Instructions\n\n```\n{result.get('setup_instructions', 'No special setup required')}\n```\n")
+                      f.write(f"- {dep}\\n")
+                  f.write(f"\\n## Setup Instructions\\n\\n```\\n{result.get('setup_instructions', 'No special setup required')}\\n```\\n")
               
               files_created.append(summary_path)
               
               # Output
               with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                  f.write(f"branch_name={branch_name}\n")
-                  f.write(f"files_created={','.join(files_created)}\n")
+                  f.write(f"branch_name={branch_name}\\n")
+                  f.write(f"files_created={','.join(files_created)}\\n")
               
-              print(f"\n🎉 Generated {len(files_created)} files successfully!")
+              print(f"\\n🎉 Generated {len(files_created)} files successfully!")
               
           except Exception as e:
               print(f"❌ Error generating code: {e}")
