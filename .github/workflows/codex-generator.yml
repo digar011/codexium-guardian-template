@@ -1,0 +1,395 @@
+name: Codexium V4 Generator
+
+on:
+  repository_dispatch:
+    types: [generate_code]
+  workflow_dispatch:
+    inputs:
+      request:
+        description: 'What to generate (e.g., "Create a login component")'
+        required: true
+        type: string
+      context:
+        description: 'Additional context or requirements'
+        required: false
+        type: string
+      safety_override:
+        description: 'Override safety checks (admin only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  # =================================================
+  # 1. EVALUATE REQUEST SAFETY
+  # =================================================
+  evaluate_request:
+    name: 🧠 Evaluate Request
+    runs-on: ubuntu-latest
+    outputs:
+      decision: ${{ steps.evaluate.outputs.decision }}
+      confidence: ${{ steps.evaluate.outputs.confidence }}
+      severity: ${{ steps.evaluate.outputs.severity }}
+      cost_estimate: ${{ steps.evaluate.outputs.cost_estimate }}
+      reasoning: ${{ steps.evaluate.outputs.reasoning }}
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install openai anthropic requests --break-system-packages
+          
+      - name: Evaluate request safety
+        id: evaluate
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          REQUEST: ${{ github.event.inputs.request || github.event.client_payload.request }}
+          CONTEXT: ${{ github.event.inputs.context || github.event.client_payload.context }}
+          SAFETY_OVERRIDE: ${{ github.event.inputs.safety_override }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import os
+          import json
+          import sys
+          from openai import OpenAI
+          
+          client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+          request = os.environ['REQUEST']
+          context = os.environ.get('CONTEXT', '')
+          safety_override = os.environ.get('SAFETY_OVERRIDE', 'false').lower() == 'true'
+          
+          # Decision Engine Prompt
+          prompt = f"""You are Codexium's Decision Engine. Evaluate this code generation request for safety, confidence, and cost.
+
+          REQUEST: {request}
+          CONTEXT: {context}
+          
+          Analyze:
+          1. **Confidence** (0-100): How confident are you that you can generate this correctly?
+          2. **Severity** (info/warn/critical): Risk level of generating this code
+          3. **Cost Estimate** ($0.01-$1.00): Estimated API cost to generate
+          4. **Safety Concerns**: Any security, data, or ethical issues?
+          5. **Decision**: PROCEED / REVIEW_REQUIRED / BLOCK
+          
+          DECISION CRITERIA:
+          - PROCEED: Confidence > 80%, Severity = info, No safety concerns
+          - REVIEW_REQUIRED: Confidence 60-80%, Severity = warn, OR involves sensitive operations
+          - BLOCK: Confidence < 60%, Severity = critical, OR dangerous patterns detected
+          
+          DANGEROUS PATTERNS (auto-block):
+          - Bulk data deletion
+          - User authentication bypass
+          - Hardcoded credentials
+          - SQL injection patterns
+          - Executing arbitrary code
+          - Accessing system files
+          - Cryptocurrency operations without safeguards
+          
+          SENSITIVE OPERATIONS (require review):
+          - Payment processing
+          - Database migrations
+          - Authentication/authorization
+          - API key handling
+          - Email sending
+          - File uploads
+          
+          Respond ONLY with valid JSON:
+          {{
+            "decision": "PROCEED|REVIEW_REQUIRED|BLOCK",
+            "confidence": 85,
+            "severity": "info|warn|critical",
+            "cost_estimate": 0.05,
+            "reasoning": "Brief explanation of decision",
+            "safety_concerns": ["concern1", "concern2"],
+            "requires_human_review": true|false
+          }}"""
+          
+          try:
+              response = client.chat.completions.create(
+                  model="gpt-4o-mini",
+                  messages=[{"role": "user", "content": prompt}],
+                  temperature=0.3,
+                  max_tokens=500
+              )
+              
+              result_text = response.choices[0].message.content.strip()
+              
+              # Extract JSON from response
+              if "```json" in result_text:
+                  result_text = result_text.split("```json")[1].split("```")[0].strip()
+              elif "```" in result_text:
+                  result_text = result_text.split("```")[1].split("```")[0].strip()
+              
+              result = json.loads(result_text)
+              
+              # Override if admin explicitly approves
+              if safety_override and result['decision'] == 'BLOCK':
+                  result['decision'] = 'REVIEW_REQUIRED'
+                  result['reasoning'] += ' (Safety override applied by admin)'
+              
+              # Output to GitHub Actions
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write(f"decision={result['decision']}\n")
+                  f.write(f"confidence={result['confidence']}\n")
+                  f.write(f"severity={result['severity']}\n")
+                  f.write(f"cost_estimate={result['cost_estimate']}\n")
+                  f.write(f"reasoning={result['reasoning']}\n")
+              
+              print(f"✅ Decision: {result['decision']}")
+              print(f"📊 Confidence: {result['confidence']}%")
+              print(f"⚠️  Severity: {result['severity']}")
+              print(f"💰 Estimated Cost: ${result['cost_estimate']}")
+              print(f"💭 Reasoning: {result['reasoning']}")
+              
+              if result['decision'] == 'BLOCK':
+                  print(f"\n🚨 BLOCKED - Safety concerns detected:")
+                  for concern in result.get('safety_concerns', []):
+                      print(f"  - {concern}")
+                  sys.exit(1)
+                  
+          except Exception as e:
+              print(f"❌ Error evaluating request: {e}")
+              # Default to requiring review on error
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write("decision=REVIEW_REQUIRED\n")
+                  f.write("confidence=50\n")
+                  f.write("severity=warn\n")
+                  f.write("cost_estimate=0.10\n")
+                  f.write("reasoning=Error during evaluation - defaulting to review\n")
+          PYTHON_SCRIPT
+
+  # =================================================
+  # 2. GENERATE CODE
+  # =================================================
+  generate_code:
+    name: 🔨 Generate Code
+    needs: evaluate_request
+    if: needs.evaluate_request.outputs.decision != 'BLOCK'
+    runs-on: ubuntu-latest
+    outputs:
+      branch_name: ${{ steps.generate.outputs.branch_name }}
+      files_created: ${{ steps.generate.outputs.files_created }}
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install openai anthropic requests --break-system-packages
+          
+      - name: Generate code files
+        id: generate
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          REQUEST: ${{ github.event.inputs.request || github.event.client_payload.request }}
+          CONTEXT: ${{ github.event.inputs.context || github.event.client_payload.context }}
+          CONFIDENCE: ${{ needs.evaluate_request.outputs.confidence }}
+          SEVERITY: ${{ needs.evaluate_request.outputs.severity }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import os
+          import json
+          import re
+          from openai import OpenAI
+          from datetime import datetime
+          
+          client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+          request = os.environ['REQUEST']
+          context = os.environ.get('CONTEXT', '')
+          
+          # Generation Prompt
+          prompt = f"""You are Codexium V4, an expert code generator. Generate complete, production-ready code files.
+
+          REQUEST: {request}
+          CONTEXT: {context}
+          
+          REQUIREMENTS:
+          1. Generate COMPLETE files (not snippets)
+          2. Include error handling
+          3. Add TypeScript types where applicable
+          4. Include tests for complex logic
+          5. Add inline comments for clarity
+          6. Follow best practices
+          7. Include README if multiple files
+          
+          RESPOND WITH VALID JSON ONLY:
+          {{
+            "files": [
+              {{
+                "path": "src/components/Login.tsx",
+                "content": "// Complete file content here...",
+                "description": "React login component with form validation"
+              }},
+              {{
+                "path": "src/components/Login.test.tsx",
+                "content": "// Complete test file...",
+                "description": "Unit tests for Login component"
+              }}
+            ],
+            "summary": "Generated React login component with JWT authentication, form validation, and error handling. Includes unit tests.",
+            "dependencies": ["react", "jwt-decode"],
+            "setup_instructions": "1. npm install\n2. Configure JWT_SECRET in .env\n3. Run tests with npm test"
+          }}
+          
+          IMPORTANT:
+          - NO markdown code blocks in file content
+          - NO explanatory text before/after JSON
+          - ONLY return valid JSON
+          - File content should be complete and runnable"""
+          
+          try:
+              response = client.chat.completions.create(
+                  model="gpt-4o",
+                  messages=[{"role": "user", "content": prompt}],
+                  temperature=0.7,
+                  max_tokens=4000
+              )
+              
+              result_text = response.choices[0].message.content.strip()
+              
+              # Extract JSON
+              if "```json" in result_text:
+                  result_text = result_text.split("```json")[1].split("```")[0].strip()
+              elif "```" in result_text:
+                  result_text = result_text.split("```")[1].split("```")[0].strip()
+              
+              result = json.loads(result_text)
+              
+              # Create branch name
+              timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+              safe_request = re.sub(r'[^a-z0-9-]', '-', request.lower()[:30])
+              branch_name = f"codexium/{safe_request}-{timestamp}"
+              
+              # Create files
+              files_created = []
+              for file_info in result['files']:
+                  filepath = file_info['path']
+                  content = file_info['content']
+                  
+                  # Create directory if needed
+                  os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                  
+                  # Write file
+                  with open(filepath, 'w') as f:
+                      f.write(content)
+                  
+                  files_created.append(filepath)
+                  print(f"✅ Created: {filepath}")
+              
+              # Create summary file
+              summary_path = "CODEXIUM_GENERATION.md"
+              with open(summary_path, 'w') as f:
+                  f.write(f"# Codexium V4 Generation Report\n\n")
+                  f.write(f"**Request:** {request}\n\n")
+                  f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                  f.write(f"## Summary\n\n{result['summary']}\n\n")
+                  f.write(f"## Files Created\n\n")
+                  for file_info in result['files']:
+                      f.write(f"- `{file_info['path']}` - {file_info['description']}\n")
+                  f.write(f"\n## Dependencies\n\n")
+                  for dep in result.get('dependencies', []):
+                      f.write(f"- {dep}\n")
+                  f.write(f"\n## Setup Instructions\n\n```\n{result.get('setup_instructions', 'No special setup required')}\n```\n")
+              
+              files_created.append(summary_path)
+              
+              # Output
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write(f"branch_name={branch_name}\n")
+                  f.write(f"files_created={','.join(files_created)}\n")
+              
+              print(f"\n🎉 Generated {len(files_created)} files successfully!")
+              
+          except Exception as e:
+              print(f"❌ Error generating code: {e}")
+              import traceback
+              traceback.print_exc()
+              exit(1)
+          PYTHON_SCRIPT
+          
+      - name: Create branch and commit
+        env:
+          BRANCH_NAME: ${{ steps.generate.outputs.branch_name }}
+          REQUEST: ${{ github.event.inputs.request || github.event.client_payload.request }}
+        run: |
+          git config user.name "Codexium V4"
+          git config user.email "codexium@codexium.dev"
+          
+          git checkout -b "$BRANCH_NAME"
+          git add .
+          git commit -m "feat: $REQUEST
+
+          Generated by Codexium V4
+          Confidence: ${{ needs.evaluate_request.outputs.confidence }}%
+          Severity: ${{ needs.evaluate_request.outputs.severity }}
+          
+          [codexium-generated]"
+          
+          git push origin "$BRANCH_NAME"
+          
+          echo "✅ Pushed to branch: $BRANCH_NAME"
+          
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ steps.generate.outputs.branch_name }}
+          REQUEST: ${{ github.event.inputs.request || github.event.client_payload.request }}
+          CONFIDENCE: ${{ needs.evaluate_request.outputs.confidence }}
+          SEVERITY: ${{ needs.evaluate_request.outputs.severity }}
+          REASONING: ${{ needs.evaluate_request.outputs.reasoning }}
+        run: |
+          gh pr create \
+            --title "🤖 Codexium: $REQUEST" \
+            --body "## 🤖 Codexium V4 Generated Code
+
+          **Request:** $REQUEST
+
+          **Decision:**
+          - ✅ Confidence: $CONFIDENCE%
+          - ⚠️ Severity: $SEVERITY
+          - 💭 Reasoning: $REASONING
+
+          ---
+
+          **Next Steps:**
+          1. ⏳ Neo V4 will review this automatically
+          2. 👀 Review Neo's findings
+          3. ✅ Approve and merge if all checks pass
+          4. 🔄 Request changes if needed
+
+          **Generated Files:**
+          See CODEXIUM_GENERATION.md for details
+
+          ---
+
+          *This PR was automatically generated by Codexium V4 and will be reviewed by Neo V4's 16 specialized agents.*" \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --label "codexium-generated" \
+            --label "awaiting-neo-review"
+          
+          echo "✅ Pull request created!"
+
+  # =================================================
+  # 3. TRIGGER NEO REVIEW
+  # =================================================
+  # Neo V4 will automatically trigger via pull_request event
+  # No manual trigger needed - neo-orchestrator.yml handles it
