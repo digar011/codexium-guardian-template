@@ -221,10 +221,10 @@ jobs:
           if echo "$CHANGED_FILES" | grep -qE '\.(jsx?|tsx?|vue|svelte|css|scss|sass|less|html)$'; then
             REVIEW_UI_UX=true
             if [ -n "$REASONING" ]; then
-              REASONING="$REASONING
-🎨 UI/UX changes detected - accessibility and design review included"
+              REASONING="${REASONING}
+          UI/UX changes detected - accessibility and design review included"
             else
-              REASONING="🎨 UI/UX changes detected - design and accessibility review needed"
+              REASONING="UI/UX changes detected - design and accessibility review needed"
             fi
           fi
           
@@ -232,10 +232,10 @@ jobs:
           if echo "$CHANGED_FILES" | grep -qE '(pages/|routes/|sitemap|robots\.txt|meta|head\.tsx?|layout\.tsx?)'; then
             REVIEW_SEO=true
             if [ -n "$REASONING" ]; then
-              REASONING="$REASONING
-🔍 SEO-critical changes - search visibility review included"
+              REASONING="${REASONING}
+          SEO-critical changes - search visibility review included"
             else
-              REASONING="🔍 SEO-critical changes detected - search visibility review needed"
+              REASONING="SEO-critical changes detected - search visibility review needed"
             fi
           fi
           
@@ -244,10 +244,10 @@ jobs:
              echo "$CHANGED_FILES" | grep -qE 'package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml'; then
             REVIEW_PERFORMANCE=true
             if [ -n "$REASONING" ]; then
-              REASONING="$REASONING
-⚡ Performance-impacting changes - Core Web Vitals review included"
+              REASONING="${REASONING}
+          Performance-impacting changes - Core Web Vitals review included"
             else
-              REASONING="⚡ Assets or dependencies changed - performance review needed"
+              REASONING="Assets or dependencies changed - performance review needed"
             fi
           fi
           
@@ -255,10 +255,10 @@ jobs:
           if echo "$CHANGED_FILES" | grep -qE '(workflows?|n8n)/.*\.json$|\.n8n/.*\.json$'; then
             REVIEW_N8N=true
             if [ -n "$REASONING" ]; then
-              REASONING="$REASONING
-🔄 n8n automation changes - workflow reliability and security review needed"
+              REASONING="${REASONING}
+          n8n automation changes - workflow reliability and security review needed"
             else
-              REASONING="🔄 n8n workflow detected - automation review required"
+              REASONING="n8n workflow detected - automation review required"
             fi
           fi
           
