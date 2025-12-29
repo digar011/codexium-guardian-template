@@ -359,7 +359,7 @@ jobs:
           
       - name: Create Pull Request
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CODEXIUM_PAT }}
           BRANCH_NAME: ${{ steps.generate.outputs.branch_name }}
           REQUEST: ${{ github.event.inputs.request || github.event.client_payload.request }}
           CONFIDENCE: ${{ needs.evaluate_request.outputs.confidence }}
