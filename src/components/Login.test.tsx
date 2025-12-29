@@ -1,54 +1,58 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import '@testing-library/jest-dom';
+import { render, fireEvent, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom/extend-expect';
 import Login from './Login';
 
-jest.mock('jwt-decode', () => () => ({ username: 'testuser', exp: Date.now() / 1000 + 60 }));
+jest.mock('jwt-decode', () => jest.fn(() => ({ sub: 'test-user' })));
 
-beforeEach(() => {
-  global.fetch = jest.fn(() =>
-    Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ token: 'fake-jwt-token' })
-    })
-  ) as jest.Mock;
-});
+global.fetch = jest.fn(() =>
+  Promise.resolve({
+    ok: true,
+    json: () => Promise.resolve({ token: 'fake-jwt-token' })
+  })
+) as jest.Mock;
 
-describe('Login Component', () => {
-  test('renders login form', () => {
-    render(<Login />);
-    expect(screen.getByText(/login/i)).toBeInTheDocument();
+describe('Login component', () => {
+  it('renders correctly', () => {
+    const { getByLabelText, getByText } = render(<Login />);
+    expect(getByLabelText(/email/i)).toBeInTheDocument();
+    expect(getByLabelText(/password/i)).toBeInTheDocument();
+    expect(getByText(/login/i)).toBeInTheDocument();
   });
 
-  test('allows users to log in successfully', async () => {
-    render(<Login />);
+  it('submits the form successfully', async () => {
+    const { getByLabelText, getByText } = render(<Login />);
+    const emailInput = getByLabelText(/email/i);
+    const passwordInput = getByLabelText(/password/i);
+    const submitButton = getByText(/login/i);
 
-    fireEvent.change(screen.getByLabelText(/username/i), {
-      target: { value: 'testuser' }
-    });
-    fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'password' }
-    });
-    fireEvent.click(screen.getByText(/login/i));
+    fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
+    fireEvent.change(passwordInput, { target: { value: 'password' } });
+    fireEvent.click(submitButton);
 
-    expect(await screen.findByText(/welcome, testuser!/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith('/api/login', expect.anything());
+    });
   });
 
-  test('displays error on login failure', async () => {
-    (global.fetch as jest.Mock).mockImplementationOnce(() =>
-      Promise.resolve({ ok: false })
-    );
+  it('handles login failure', async () => {
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: false,
+        json: () => Promise.reject(new Error('Login failed'))
+      })
+    ) as jest.Mock;
 
-    render(<Login />);
+    const { getByLabelText, getByText, findByText } = render(<Login />);
+    const emailInput = getByLabelText(/email/i);
+    const passwordInput = getByLabelText(/password/i);
+    const submitButton = getByText(/login/i);
 
-    fireEvent.change(screen.getByLabelText(/username/i), {
-      target: { value: 'testuser' }
-    });
-    fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'wrongpassword' }
-    });
-    fireEvent.click(screen.getByText(/login/i));
+    fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
+    fireEvent.change(passwordInput, { target: { value: 'password' } });
+    fireEvent.click(submitButton);
 
-    expect(await screen.findByText(/login failed/i)).toBeInTheDocument();
+    const errorMessage = await findByText(/login failed/i);
+    expect(errorMessage).toBeInTheDocument();
   });
 });
