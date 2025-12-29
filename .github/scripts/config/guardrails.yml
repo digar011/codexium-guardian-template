@@ -1,0 +1,297 @@
+# Neo V4 Guardrails Configuration
+# This file defines enforcement rules and blocking conditions for code reviews
+
+# =============================================================================
+# CRITICAL GUARDRAILS - Will BLOCK merge if violated
+# =============================================================================
+
+critical_violations:
+  security:
+    - rule: "hardcoded_secrets"
+      pattern: "(password|api[_-]?key|secret|token)\\s*=\\s*['\"][^'\"]+['\"]"
+      message: "Hardcoded credentials detected - use environment variables"
+      severity: "critical"
+      block: true
+      
+    - rule: "sql_injection_risk"
+      pattern: "execute.*\\+.*|query.*\\+.*|raw.*sql"
+      message: "Potential SQL injection - use parameterized queries"
+      severity: "critical"
+      block: true
+      
+    - rule: "exposed_port_22"
+      files: ["Dockerfile", "docker-compose.yml"]
+      pattern: "EXPOSE\\s+22|ports:.*22:"
+      message: "SSH port 22 exposed - security risk"
+      severity: "critical"
+      block: true
+  
+  compliance:
+    - rule: "pii_in_logs"
+      pattern: "log.*email|console\\.log.*email|logger.*ssn"
+      message: "PII in logs - GDPR/CCPA violation"
+      severity: "critical"
+      block: true
+      
+    - rule: "missing_encryption"
+      files: ["**/models/*.js", "**/schema/*.sql"]
+      pattern: "password.*varchar|email.*text"
+      message: "Sensitive data without encryption spec"
+      severity: "critical"
+      block: true
+  
+  infrastructure:
+    - rule: "no_resource_limits"
+      files: ["**/k8s/*.yaml", "**/deploy/*.yml"]
+      pattern: "kind:\\s*Deployment"
+      requires_also: "resources:\\s*limits:"
+      message: "Kubernetes deployment missing resource limits"
+      severity: "critical"
+      block: true
+      
+    - rule: "latest_tag_production"
+      files: ["**/prod/*.yaml", "**/production/*.yml"]
+      pattern: "image:.*:latest"
+      message: "':latest' tag in production - use specific versions"
+      severity: "critical"
+      block: true
+  
+  accessibility:
+    - rule: "form_without_labels"
+      files: ["**/*.jsx", "**/*.tsx", "**/*.vue"]
+      pattern: "<input(?![^>]*aria-label)(?![^>]*id=\"\\w+\").*>"
+      message: "Input without label - WCAG violation"
+      severity: "critical"
+      block: true
+      
+  privacy:
+    - rule: "child_data_collection"
+      pattern: "age|birthdate|birthday"
+      requires_also: "parentalConsent|ageGate"
+      message: "Age collection without COPPA compliance"
+      severity: "critical"
+      block: true
+
+# =============================================================================
+# WARNING GUARDRAILS - Will warn but allow merge with approval
+# =============================================================================
+
+warning_conditions:
+  performance:
+    - rule: "large_bundle_addition"
+      check: "bundle_size_increase"
+      threshold: 100000  # 100KB
+      message: "Bundle size increased by >100KB - consider code splitting"
+      severity: "warn"
+      block: false
+      
+    - rule: "unoptimized_image"
+      files: ["**/*.jpg", "**/*.png"]
+      size_threshold: 1000000  # 1MB
+      message: "Image >1MB - compress before committing"
+      severity: "warn"
+      block: false
+  
+  code_quality:
+    - rule: "large_function"
+      pattern: "function\\s+\\w+\\s*\\([^)]*\\)\\s*\\{"
+      line_count: 100
+      message: "Function >100 lines - consider refactoring"
+      severity: "warn"
+      block: false
+      
+    - rule: "todo_in_production"
+      files: ["**/src/**", "!**/*.test.*"]
+      pattern: "TODO|FIXME|HACK"
+      message: "TODO/FIXME in production code"
+      severity: "warn"
+      block: false
+  
+  documentation:
+    - rule: "missing_jsdoc"
+      files: ["**/*.js", "**/*.ts"]
+      pattern: "export (function|class)\\s+\\w+"
+      requires_also: "/\\*\\*"
+      message: "Public function/class missing JSDoc"
+      severity: "info"
+      block: false
+
+# =============================================================================
+# AUTOMATIC ACTIONS - Neo takes action automatically
+# =============================================================================
+
+automatic_actions:
+  - trigger: "security_critical_severity"
+    action: "block_merge"
+    notify:
+      - "@security-team"
+      - "@tech-lead"
+    escalate: true
+    
+  - trigger: "compliance_violation"
+    action: "block_merge"
+    notify:
+      - "@compliance-officer"
+      - "@legal-team"
+    create_issue: true
+    
+  - trigger: "performance_degradation"
+    threshold: 3  # 3 performance warnings
+    action: "require_approval"
+    notify:
+      - "@performance-team"
+    
+  - trigger: "accessibility_critical"
+    action: "block_merge"
+    notify:
+      - "@a11y-champion"
+    labels: ["accessibility", "compliance"]
+
+# =============================================================================
+# REVIEW REQUIREMENTS - When each agent must review
+# =============================================================================
+
+required_reviews:
+  security:
+    when:
+      - files: ["**/auth/**", "**/security/**"]
+      - pattern: "password|token|secret|crypto"
+      - changes: "> 100 lines in security-critical files"
+    minimum_reviewers: 2
+    require_approval: true
+    
+  compliance:
+    when:
+      - files: ["**/user/**", "**/payment/**", "**/privacy/**"]
+      - pattern: "gdpr|ccpa|hipaa|pii|phi"
+      - api_endpoints: ["POST /api/users", "DELETE /api/users"]
+    require_legal_approval: true
+    
+  devops:
+    when:
+      - files: ["Dockerfile", "**/k8s/**", "**.tf"]
+      - changes_to: "infrastructure"
+    require_platform_team: true
+    
+  accessibility:
+    when:
+      - files: ["**/*.jsx", "**/*.tsx", "**/*.vue"]
+      - changes: "forms|modals|navigation"
+    minimum_wcag: "AA"
+    block_if: "critical_violations"
+
+# =============================================================================
+# EXEMPTIONS - Exceptions to guardrails
+# =============================================================================
+
+exemptions:
+  allow_latest_tag:
+    - "development.yaml"
+    - "staging.yaml"
+    # Only production blocked
+    
+  allow_todo:
+    - "**/*.test.*"
+    - "**/*.spec.*"
+    - "**/docs/**"
+    
+  skip_bundle_check:
+    - reason: "vendor_library"
+      approved_by: "@tech-lead"
+      expires: "2025-12-31"
+
+# =============================================================================
+# TELEMETRY INTEGRATION
+# =============================================================================
+
+telemetry:
+  track_events:
+    - "guardrail_violation"
+    - "merge_blocked"
+    - "manual_override"
+    - "exemption_used"
+    
+  metrics:
+    - "violations_per_agent"
+    - "block_rate"
+    - "false_positive_rate"
+    - "time_to_resolution"
+    
+  reporting:
+    weekly_summary: true
+    recipients:
+      - "engineering-leads@company.com"
+    dashboard_url: "https://dashboard.codexium.com/guardrails"
+
+# =============================================================================
+# SEVERITY MATRIX
+# =============================================================================
+
+severity_levels:
+  critical:
+    block_merge: true
+    require_approval: ["@security-team", "@tech-lead"]
+    create_incident: true
+    
+  warn:
+    block_merge: false
+    require_acknowledgment: true
+    create_issue: false
+    
+  info:
+    block_merge: false
+    track_only: true
+
+# =============================================================================
+# ENFORCEMENT MODES
+# =============================================================================
+
+enforcement:
+  mode: "strict"  # strict | advisory | audit-only
+  
+  strict:
+    # Critical violations block merge
+    # Warnings require acknowledgment
+    # All violations tracked
+    
+  advisory:
+    # Nothing blocks, only suggestions
+    # All violations tracked for metrics
+    
+  audit-only:
+    # Violations logged but no enforcement
+    # Used for gathering baseline data
+
+# =============================================================================
+# OVERRIDE POLICIES
+# =============================================================================
+
+override_rules:
+  who_can_override:
+    critical: ["@tech-lead", "@cto"]
+    warn: ["@senior-engineer", "@tech-lead"]
+    info: ["@any-engineer"]
+    
+  override_requires:
+    - justification: true
+    - approval_count: 1  # For critical: 2
+    - incident_ticket: true  # For critical only
+    
+  override_audit:
+    log_all: true
+    notify: ["@audit-team"]
+    review_monthly: true
+
+# =============================================================================
+# CUSTOM RULES PER PROJECT
+# =============================================================================
+
+project_specific:
+  # Can be overridden per repo
+  enabled: true
+  config_file: ".neo/guardrails.yml"
+  
+  merge_strategy:
+    - use_global_rules: true
+    - allow_project_additions: true
+    - allow_project_exemptions: false  # Only global exemptions allowed
