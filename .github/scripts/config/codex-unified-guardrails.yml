@@ -1,0 +1,214 @@
+# Codexium V4 + Neo V4 - Unified Guardrails
+# These rules apply to BOTH code generation and code review
+
+# =================================================
+# GENERATION GUARDRAILS (Codexium V4)
+# =================================================
+
+generation:
+  # Auto-block these patterns (never generate)
+  block_patterns:
+    - pattern: "delete.*from.*users.*where"
+      reason: "Bulk user deletion requires manual implementation"
+      severity: critical
+      
+    - pattern: "DROP TABLE|TRUNCATE TABLE"
+      reason: "Database destruction operations blocked"
+      severity: critical
+      
+    - pattern: "eval\\(|exec\\(|Function\\("
+      reason: "Arbitrary code execution blocked"
+      severity: critical
+      
+    - pattern: "process\\.env\\..*=|process\\.env\\[.*\\]\\s*="
+      reason: "Environment variable modification blocked"
+      severity: critical
+      
+    - pattern: "rm -rf|Remove-Item.*-Recurse.*-Force"
+      reason: "Recursive file deletion blocked"
+      severity: critical
+      
+    - pattern: "chmod 777|icacls.*F"
+      reason: "Overly permissive file permissions blocked"
+      severity: critical
+
+  # Require human review for these (generate but flag)
+  review_required:
+    - pattern: "stripe|paypal|payment|charge|refund"
+      reason: "Payment processing requires security review"
+      severity: warn
+      
+    - pattern: "ALTER TABLE|CREATE TABLE|DROP|ADD COLUMN"
+      reason: "Database schema changes require review"
+      severity: warn
+      
+    - pattern: "jwt\\.sign|bcrypt|password.*hash"
+      reason: "Authentication/authorization requires security review"
+      severity: warn
+      
+    - pattern: "sendMail|nodemailer|smtp"
+      reason: "Email operations require review for spam prevention"
+      severity: warn
+      
+    - pattern: "multer|file.*upload|formidable"
+      reason: "File uploads require security review"
+      severity: warn
+      
+    - pattern: "crypto\\.createCipher|AES|RSA"
+      reason: "Cryptography operations require review"
+      severity: warn
+
+  # Confidence thresholds
+  confidence_gates:
+    auto_proceed: 85  # >= 85% confidence: auto-generate
+    require_review: 65  # 65-84%: generate but require review
+    block: 65  # < 65%: block generation
+
+  # Cost limits (USD)
+  cost_limits:
+    max_per_request: 1.00
+    warn_threshold: 0.25
+
+# =================================================
+# REVIEW GUARDRAILS (Neo V4)
+# =================================================
+
+review:
+  # Auto-block merge if these are found
+  blocking_issues:
+    - type: "hardcoded_secret"
+      patterns:
+        - "api[_-]?key.*=.*['\"][a-zA-Z0-9]{20,}['\"]"
+        - "secret.*=.*['\"][a-zA-Z0-9]{20,}['\"]"
+        - "password.*=.*['\"][^'\"]{8,}['\"]"
+        - "token.*=.*['\"][a-zA-Z0-9]{20,}['\"]"
+      message: "Hardcoded secrets detected - use environment variables"
+      severity: critical
+      
+    - type: "sql_injection"
+      patterns:
+        - "SELECT.*\\+.*|INSERT.*\\+.*|UPDATE.*\\+.*"
+        - "execute\\(['\"]SELECT.*\\$\\{|query\\(['\"]SELECT.*\\$\\{"
+      message: "SQL injection vulnerability - use parameterized queries"
+      severity: critical
+      
+    - type: "command_injection"
+      patterns:
+        - "exec\\(.*\\+.*|spawn\\(.*\\+.*|system\\(.*\\+.*"
+      message: "Command injection risk - sanitize inputs"
+      severity: critical
+      
+    - type: "xss_vulnerability"
+      patterns:
+        - "innerHTML.*=.*\\+|dangerouslySetInnerHTML"
+        - "\\.html\\(.*\\+.*\\)"
+      message: "XSS vulnerability - sanitize user input"
+      severity: critical
+
+  # Warn but don't block
+  warning_issues:
+    - type: "missing_error_handling"
+      patterns:
+        - "await.*(?!try)"
+        - "fetch\\((?!.*catch)"
+      message: "Missing error handling on async operations"
+      severity: warn
+      
+    - type: "console_log"
+      patterns:
+        - "console\\.log|console\\.debug"
+      message: "Console logs should be removed in production"
+      severity: info
+      
+    - type: "todo_comments"
+      patterns:
+        - "TODO|FIXME|HACK|XXX"
+      message: "TODO comments detected - address before merging"
+      severity: info
+
+  # Severity thresholds for gate
+  severity_gates:
+    block_on_critical: true  # Any critical = block merge
+    max_warnings: 10  # > 10 warnings = block merge
+    max_info: 50  # > 50 info = warn (don't block)
+
+# =================================================
+# SHARED RULES (Both Systems)
+# =================================================
+
+shared:
+  # File size limits
+  max_file_size_kb: 500
+  max_files_per_pr: 50
+  
+  # Excluded paths (never generate or deeply review)
+  excluded_paths:
+    - "node_modules/**"
+    - ".git/**"
+    - "dist/**"
+    - "build/**"
+    - "*.min.js"
+    - "*.bundle.js"
+  
+  # Required files for certain changes
+  required_files:
+    - if_contains: "package.json"
+      then_require: "package-lock.json"
+      message: "package-lock.json should be committed with package.json"
+      
+    - if_contains: ".env.example"
+      then_require: ".env.example"
+      message: "Include .env.example for environment variables"
+      
+    - if_contains: "src/**/*.tsx"
+      then_require: "**/*.test.tsx"
+      message: "React components should include tests"
+
+  # Technology-specific rules
+  tech_specific:
+    react:
+      require_prop_types: false  # TypeScript handles this
+      require_key_prop: true
+      no_array_index_key: true
+      
+    typescript:
+      strict_mode: true
+      no_any: warn  # Warn but don't block
+      no_explicit_any: warn
+      
+    security:
+      https_only: true
+      validate_all_inputs: true
+      no_eval: true
+      no_innerHTML: warn
+
+# =================================================
+# INTEGRATION SETTINGS
+# =================================================
+
+integration:
+  # How Codexium and Neo work together
+  workflow:
+    codexium_generates: true
+    neo_reviews_all: true  # Neo reviews human AND Codexium code
+    require_human_approval: true  # Final human approval always required
+    
+  # Labels for tracking
+  labels:
+    codexium_generated: "codexium-generated"
+    neo_reviewed: "neo-reviewed"
+    awaiting_review: "awaiting-neo-review"
+    blocked: "blocked-by-guardrails"
+    
+  # Memory/state sharing
+  shared_memory:
+    track_generated_files: true
+    track_review_history: true
+    prevent_duplicate_generation: true
+    
+  # Telemetry
+  telemetry:
+    track_generation_requests: true
+    track_review_outcomes: true
+    track_cost: true
+    track_confidence: true
