@@ -1,41 +1,38 @@
 import React from 'react';
+import clsx from 'clsx';
 
 interface ButtonProps {
-  variant: 'primary' | 'secondary';
-  onClick: () => void;
-  disabled?: boolean;
+  variant?: 'primary' | 'secondary';
   children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
 }
 
-const Button: React.FC<ButtonProps> = ({ variant, onClick, disabled = false, children }) => {
-  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (disabled) {
-      return;
-    }
-    try {
-      onClick();
-    } catch (error) {
-      console.error('Error occurred while clicking the button:', error);
-    }
-  };
+/**
+ * Button component with primary and secondary variants.
+ * @param {ButtonProps} props - Component properties.
+ * @returns {JSX.Element} - Rendered button element.
+ */
+const Button: React.FC<ButtonProps> = ({ variant = 'primary', children, onClick, disabled = false }) => {
+  // Determine button class based on variant
+  const buttonClass = clsx('button', {
+    'button--primary': variant === 'primary',
+    'button--secondary': variant === 'secondary',
+  });
 
-  const getClassNames = (): string => {
-    switch (variant) {
-      case 'primary':
-        return 'button-primary';
-      case 'secondary':
-        return 'button-secondary';
-      default:
-        return '';
+  // Handle button click with optional error handling
+  const handleClick = () => {
+    try {
+      if (onClick && !disabled) {
+        onClick();
+      }
+    } catch (error) {
+      console.error('Error handling button click:', error);
     }
   };
 
   return (
-    <button
-      className={`button ${getClassNames()}`}
-      onClick={handleClick}
-      disabled={disabled}
-    >
+    <button className={buttonClass} onClick={handleClick} disabled={disabled}>
       {children}
     </button>
   );
