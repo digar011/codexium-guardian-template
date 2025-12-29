@@ -1,6 +1,6 @@
 name: Codexium V4 Generator 
 
-on:
+on: 
   repository_dispatch:
     types: [generate_code]
   workflow_dispatch:
