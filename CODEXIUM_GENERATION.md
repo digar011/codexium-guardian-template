@@ -1,28 +1,3 @@
-# Codexium V4 Generation Report
-
-**Request:** Create a button component
-
-**Generated:** 2025-12-29 07:07:43
-
-## Summary
-
-Generated a React Button component with primary and secondary variants using TypeScript and Tailwind CSS. The component includes hover and disabled states and is accompanied by unit tests verifying its functionality and styling.
-
-## Files Created
-
-- `src/components/Button.tsx` - A reusable Button component with primary and secondary variants, supporting hover and disabled states.
-- `src/components/Button.test.tsx` - Unit tests for the Button component, checking rendering, click events, and CSS classes.
-
-## Dependencies
-
-- react
-- classnames
-- @testing-library/react
-- @testing-library/jest-dom
-
-## Setup Instructions
-
-```
-1. Install dependencies with npm install
-2. Run tests with npm test
-```
+# Codexium V4 Generation Report\n\n**Request:** Create a simple Hello component\n\n**Generated:** 2025-12-29 09:27:09\n\n## Summary\n\nGenerated a simple React Hello component with TypeScript, including error handling for missing props, and unit tests for rendering and error scenarios.\n\n## Files Created\n\n- `src/components/Hello.tsx` - A simple React functional component that displays a greeting message.\n- `src/components/Hello.test.tsx` - Unit tests for the Hello component, checking for correct rendering and error handling.\n\n## Dependencies\n\n- react\n- @testing-library/react\n- @testing-library/jest-dom\n\n## Setup Instructions\n\n```\n1. Run 'npm install' to install dependencies.
+2. Use the component in your application by importing it.
+3. Run tests with 'npm test'.\n```\n
