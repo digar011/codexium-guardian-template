@@ -1,23 +1,31 @@
 name: Codexium V4 Generator 
 
-on: 
-  repository_dispatch:
-    types: [generate_code]
+on:
   workflow_dispatch:
     inputs:
       request:
-        description: 'What to generate (e.g., "Create a login component")'
+        description: 'Code generation request'
         required: true
         type: string
       context:
-        description: 'Additional context or requirements'
+        description: 'Additional context (optional)'
         required: false
         type: string
-      safety_override:
-        description: 'Override safety checks (admin only)'
+      # ADD THESE THREE NEW INPUTS:
+      triggered_by:
+        description: 'How this was triggered (manual/comment)'
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: 'manual'
+      comment_id:
+        description: 'GitHub comment ID (if triggered by comment)'
+        required: false
+        type: string
+      issue_number:
+        description: 'GitHub issue/PR number (if triggered by comment)'
+        required: false
+        type: string
+         ```
 
 permissions:
   contents: write
@@ -351,7 +359,7 @@ jobs:
           
       - name: Create Pull Request
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CODEXIUM_PAT }}
           BRANCH_NAME: ${{ steps.generate.outputs.branch_name }}
           REQUEST: ${{ github.event.inputs.request || github.event.client_payload.request }}
           CONFIDENCE: ${{ needs.evaluate_request.outputs.confidence }}
