@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       role:
-        description: "Review role (architect, security, qa, or general)"
+        description: "Review role (architect, security, qa, ui_ux, critic, seo, performance, n8n, or general)"
         required: false
         type: string
         default: "general"
