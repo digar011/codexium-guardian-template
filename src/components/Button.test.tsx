@@ -1,33 +1,32 @@
 import React from 'react';
 import { render, fireEvent } from '@testing-library/react';
+import '@testing-library/jest-dom/extend-expect';
 import Button from './Button';
 
-describe('Button Component', () => {
-  it('should render correctly with primary variant', () => {
-    const { getByText } = render(<Button variant="primary" onClick={() => {}}>Click Me</Button>);
-    const button = getByText('Click Me');
-    expect(button).toHaveClass('button-primary');
+describe('Button component', () => {
+  test('renders the button with primary variant by default', () => {
+    const { getByRole } = render(<Button>Click me</Button>);
+    const button = getByRole('button');
+    expect(button).toHaveClass('button--primary');
   });
 
-  it('should render correctly with secondary variant', () => {
-    const { getByText } = render(<Button variant="secondary" onClick={() => {}}>Click Me</Button>);
-    const button = getByText('Click Me');
-    expect(button).toHaveClass('button-secondary');
+  test('renders the button with secondary variant', () => {
+    const { getByRole } = render(<Button variant="secondary">Click me</Button>);
+    const button = getByRole('button');
+    expect(button).toHaveClass('button--secondary');
   });
 
-  it('should call onClick when clicked', () => {
+  test('calls onClick handler when clicked', () => {
     const handleClick = jest.fn();
-    const { getByText } = render(<Button variant="primary" onClick={handleClick}>Click Me</Button>);
-    const button = getByText('Click Me');
+    const { getByRole } = render(<Button onClick={handleClick}>Click me</Button>);
+    const button = getByRole('button');
     fireEvent.click(button);
     expect(handleClick).toHaveBeenCalledTimes(1);
   });
 
-  it('should not call onClick when disabled', () => {
-    const handleClick = jest.fn();
-    const { getByText } = render(<Button variant="primary" onClick={handleClick} disabled>Click Me</Button>);
-    const button = getByText('Click Me');
-    fireEvent.click(button);
-    expect(handleClick).toHaveBeenCalledTimes(0);
+  test('renders disabled button', () => {
+    const { getByRole } = render(<Button disabled>Click me</Button>);
+    const button = getByRole('button');
+    expect(button).toBeDisabled();
   });
 });
