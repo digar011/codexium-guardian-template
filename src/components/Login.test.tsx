@@ -1,54 +1,38 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import '@testing-library/jest-dom';
+import { render, fireEvent, screen } from '@testing-library/react';
+import '@testing-library/jest-dom/extend-expect';
 import Login from './Login';
 
-jest.mock('jwt-decode', () => () => ({ username: 'testuser', exp: Date.now() / 1000 + 60 }));
-
-beforeEach(() => {
-  global.fetch = jest.fn(() =>
-    Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ token: 'fake-jwt-token' })
-    })
-  ) as jest.Mock;
-});
+// Mock jwtDecode for testing
+jest.mock('jwt-decode', () => jest.fn(() => ({ exp: 9999999999, iat: 1234567890 })));
 
 describe('Login Component', () => {
   test('renders login form', () => {
     render(<Login />);
+    expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByText(/login/i)).toBeInTheDocument();
   });
 
-  test('allows users to log in successfully', async () => {
+  test('shows error on invalid credentials', async () => {
     render(<Login />);
-
-    fireEvent.change(screen.getByLabelText(/username/i), {
-      target: { value: 'testuser' }
-    });
-    fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'password' }
-    });
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'wrong' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'credentials' } });
     fireEvent.click(screen.getByText(/login/i));
 
-    expect(await screen.findByText(/welcome, testuser!/i)).toBeInTheDocument();
+    const errorMessage = await screen.findByText(/login failed/i);
+    expect(errorMessage).toBeInTheDocument();
   });
 
-  test('displays error on login failure', async () => {
-    (global.fetch as jest.Mock).mockImplementationOnce(() =>
-      Promise.resolve({ ok: false })
-    );
-
+  test('logs in with correct credentials', async () => {
+    console.log = jest.fn(); // Mock console.log
     render(<Login />);
-
-    fireEvent.change(screen.getByLabelText(/username/i), {
-      target: { value: 'testuser' }
-    });
-    fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'wrongpassword' }
-    });
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password' } });
     fireEvent.click(screen.getByText(/login/i));
 
-    expect(await screen.findByText(/login failed/i)).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for async call
+
+    expect(console.log).toHaveBeenCalledWith('Login successful');
   });
 });
