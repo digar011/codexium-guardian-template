@@ -1,5 +1,4 @@
 import React from 'react';
-import classNames from 'classnames';
 
 interface ButtonProps {
   variant: 'primary' | 'secondary';
@@ -8,23 +7,33 @@ interface ButtonProps {
   children: React.ReactNode;
 }
 
-const Button: React.FC<ButtonProps> = ({ variant, onClick, disabled, children }) => {
-  const buttonClasses = classNames(
-    'px-4 py-2 font-semibold rounded',
-    {
-      'bg-blue-500 text-white hover:bg-blue-600': variant === 'primary' && !disabled,
-      'bg-gray-500 text-white hover:bg-gray-600': variant === 'secondary' && !disabled,
-      'bg-blue-300 text-white cursor-not-allowed': variant === 'primary' && disabled,
-      'bg-gray-300 text-white cursor-not-allowed': variant === 'secondary' && disabled,
+const Button: React.FC<ButtonProps> = ({ variant, onClick, disabled = false, children }) => {
+  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (disabled) {
+      return;
     }
-  );
+    try {
+      onClick();
+    } catch (error) {
+      console.error('Error occurred while clicking the button:', error);
+    }
+  };
 
-  // Return a button element
+  const getClassNames = (): string => {
+    switch (variant) {
+      case 'primary':
+        return 'button-primary';
+      case 'secondary':
+        return 'button-secondary';
+      default:
+        return '';
+    }
+  };
+
   return (
     <button
-      type="button"
-      className={buttonClasses}
-      onClick={disabled ? () => {} : onClick}
+      className={`button ${getClassNames()}`}
+      onClick={handleClick}
       disabled={disabled}
     >
       {children}

@@ -1,48 +1,33 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import '@testing-library/jest-dom';
+import { render, fireEvent } from '@testing-library/react';
 import Button from './Button';
 
-// Test cases for the Button component
-
-describe('Button component', () => {
-  it('renders primary button with correct text', () => {
-    render(<Button variant="primary" onClick={() => {}}>Primary Button</Button>);
-    const buttonElement = screen.getByText(/Primary Button/i);
-    expect(buttonElement).toBeInTheDocument();
+describe('Button Component', () => {
+  it('should render correctly with primary variant', () => {
+    const { getByText } = render(<Button variant="primary" onClick={() => {}}>Click Me</Button>);
+    const button = getByText('Click Me');
+    expect(button).toHaveClass('button-primary');
   });
 
-  it('renders secondary button with correct text', () => {
-    render(<Button variant="secondary" onClick={() => {}}>Secondary Button</Button>);
-    const buttonElement = screen.getByText(/Secondary Button/i);
-    expect(buttonElement).toBeInTheDocument();
+  it('should render correctly with secondary variant', () => {
+    const { getByText } = render(<Button variant="secondary" onClick={() => {}}>Click Me</Button>);
+    const button = getByText('Click Me');
+    expect(button).toHaveClass('button-secondary');
   });
 
-  it('calls onClick handler when clicked', () => {
+  it('should call onClick when clicked', () => {
     const handleClick = jest.fn();
-    render(<Button variant="primary" onClick={handleClick}>Click Me</Button>);
-    const buttonElement = screen.getByText(/Click Me/i);
-    fireEvent.click(buttonElement);
+    const { getByText } = render(<Button variant="primary" onClick={handleClick}>Click Me</Button>);
+    const button = getByText('Click Me');
+    fireEvent.click(button);
     expect(handleClick).toHaveBeenCalledTimes(1);
   });
 
-  it('does not call onClick handler when disabled', () => {
+  it('should not call onClick when disabled', () => {
     const handleClick = jest.fn();
-    render(<Button variant="primary" onClick={handleClick} disabled>Click Me</Button>);
-    const buttonElement = screen.getByText(/Click Me/i);
-    fireEvent.click(buttonElement);
-    expect(handleClick).not.toHaveBeenCalled();
-  });
-
-  it('applies the correct class for primary variant', () => {
-    render(<Button variant="primary" onClick={() => {}}>Primary Button</Button>);
-    const buttonElement = screen.getByText(/Primary Button/i);
-    expect(buttonElement).toHaveClass('bg-blue-500');
-  });
-
-  it('applies the correct class for secondary variant', () => {
-    render(<Button variant="secondary" onClick={() => {}}>Secondary Button</Button>);
-    const buttonElement = screen.getByText(/Secondary Button/i);
-    expect(buttonElement).toHaveClass('bg-gray-500');
+    const { getByText } = render(<Button variant="primary" onClick={handleClick} disabled>Click Me</Button>);
+    const button = getByText('Click Me');
+    fireEvent.click(button);
+    expect(handleClick).toHaveBeenCalledTimes(0);
   });
 });
