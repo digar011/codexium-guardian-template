@@ -25,6 +25,11 @@ def main():
         print("❌ OPENAI_API_KEY not found in environment")
         sys.exit(1)
     
+    # Debug: Check if key looks valid (should start with 'sk-')
+    if not api_key.startswith('sk-'):
+        print(f"❌ Invalid API key format. Got: '{api_key[:10]}...' (should start with 'sk-')")
+        sys.exit(1)
+    
     # Build payload
     payload = {
         "model": "gpt-4-turbo-2024-04-09",
