@@ -1,76 +1,73 @@
 import React, { useState } from 'react';
 import jwtDecode from 'jwt-decode';
 
-interface LoginProps {}
+type LoginProps = {
+  onLoginSuccess: (decodedToken: any) => void;
+};
 
-interface TokenPayload {
+type FormState = {
   username: string;
-  exp: number;
-}
+  password: string;
+};
 
-const Login: React.FC<LoginProps> = () => {
-  const [username, setUsername] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
+type ErrorState = {
+  username?: string;
+  password?: string;
+  form?: string;
+};
+
+const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+  const [formState, setFormState] = useState<FormState>({ username: '', password: '' });
+  const [errors, setErrors] = useState<ErrorState>({});
+
+  const validateForm = (): boolean => {
+    const newErrors: ErrorState = {};
+    if (!formState.username) newErrors.username = 'Username is required';
+    if (!formState.password) newErrors.password = 'Password is required';
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    try {
-      // Mocking a login API request
-      const response = await fetch("/api/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ username, password })
-      });
+    if (!validateForm()) return;
 
-      if (!response.ok) {
-        throw new Error("Login failed");
-      }
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formState)
+      });
+      if (!response.ok) throw new Error('Login failed');
 
       const { token } = await response.json();
-      const decodedToken: TokenPayload = jwtDecode(token);
-
-      // Check if the token is expired
-      if (decodedToken.exp * 1000 < Date.now()) {
-        throw new Error("Token expired");
-      }
-
-      // Successful login
-      setError(null);
-      alert(`Welcome, ${decodedToken.username}!`);
-    } catch (err: any) {
-      setError(err.message);
+      const decodedToken = jwtDecode(token);
+      onLoginSuccess(decodedToken);
+    } catch (error: any) {
+      setErrors({ form: error.message });
     }
   };
 
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = event.target;
+    setFormState((prev) => ({ ...prev, [name]: value }));
+  };
+
   return (
-    <div>
-      <h1>Login</h1>
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label htmlFor="username">Username</label>
-          <input
-            type="text"
-            id="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="password">Password</label>
-          <input
-            type="password"
-            id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        {error && <p style={{ color: "red" }}>{error}</p>}
-        <button type="submit">Login</button>
-      </form>
-    </div>
+    <form onSubmit={handleSubmit}>
+      <div>
+        <label>Username:</label>
+        <input name="username" value={formState.username} onChange={handleChange} />
+        {errors.username && <span>{errors.username}</span>}
+      </div>
+      <div>
+        <label>Password:</label>
+        <input type="password" name="password" value={formState.password} onChange={handleChange} />
+        {errors.password && <span>{errors.password}</span>}
+      </div>
+      {errors.form && <div>{errors.form}</div>}
+      <button type="submit">Login</button>
+    </form>
   );
 };
 
