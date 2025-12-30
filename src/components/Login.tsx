@@ -1,76 +1,62 @@
 import React, { useState } from 'react';
 import jwtDecode from 'jwt-decode';
 
-interface LoginProps {}
+type LoginProps = {
+  onSuccess: (user: any) => void;
+};
 
-interface TokenPayload {
-  username: string;
-  exp: number;
-}
+type FormData = {
+  email: string;
+  password: string;
+};
 
-const Login: React.FC<LoginProps> = () => {
-  const [username, setUsername] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
+const Login: React.FC<LoginProps> = ({ onSuccess }) => {
+  const [formData, setFormData] = useState<FormData>({ email: '', password: '' });
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+
     try {
-      // Mocking a login API request
-      const response = await fetch("/api/login", {
-        method: "POST",
+      const response = await fetch('/api/login', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify(formData),
       });
 
       if (!response.ok) {
-        throw new Error("Login failed");
+        throw new Error('Login failed');
       }
 
-      const { token } = await response.json();
-      const decodedToken: TokenPayload = jwtDecode(token);
-
-      // Check if the token is expired
-      if (decodedToken.exp * 1000 < Date.now()) {
-        throw new Error("Token expired");
-      }
-
-      // Successful login
-      setError(null);
-      alert(`Welcome, ${decodedToken.username}!`);
-    } catch (err: any) {
-      setError(err.message);
+      const data = await response.json();
+      const user = jwtDecode(data.token);
+      onSuccess(user);
+    } catch (err) {
+      console.error(err);
+      setError('An error occurred while logging in. Please try again.');
     }
   };
 
   return (
-    <div>
-      <h1>Login</h1>
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label htmlFor="username">Username</label>
-          <input
-            type="text"
-            id="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="password">Password</label>
-          <input
-            type="password"
-            id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        {error && <p style={{ color: "red" }}>{error}</p>}
-        <button type="submit">Login</button>
-      </form>
-    </div>
+    <form onSubmit={handleSubmit}>
+      <div>
+        <label htmlFor="email">Email:</label>
+        <input type="email" name="email" value={formData.email} onChange={handleChange} required />
+      </div>
+      <div>
+        <label htmlFor="password">Password:</label>
+        <input type="password" name="password" value={formData.password} onChange={handleChange} required />
+      </div>
+      {error && <div className="error">{error}</div>}
+      <button type="submit">Login</button>
+    </form>
   );
 };
 
