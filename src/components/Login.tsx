@@ -1,77 +1,74 @@
 import React, { useState } from 'react';
 import jwtDecode from 'jwt-decode';
 
-interface LoginProps {}
-
-interface TokenPayload {
-  username: string;
-  exp: number;
+interface LoginProps {
+  onLoginSuccess: (token: string) => void;
 }
 
-const Login: React.FC<LoginProps> = () => {
-  const [username, setUsername] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
+const LoginForm: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+  // State variables for form fields and error handling
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
+  // Handle form submission
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    setError(null);
+
     try {
-      // Mocking a login API request
-      const response = await fetch("/api/login", {
-        method: "POST",
+      const response = await fetch('/api/login', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ email, password }),
       });
 
       if (!response.ok) {
-        throw new Error("Login failed");
+        throw new Error('Login failed');
       }
 
-      const { token } = await response.json();
-      const decodedToken: TokenPayload = jwtDecode(token);
+      const data = await response.json();
+      const decodedToken = jwtDecode(data.token);
 
-      // Check if the token is expired
-      if (decodedToken.exp * 1000 < Date.now()) {
-        throw new Error("Token expired");
+      // Example: Validate token
+      if (!decodedToken) {
+        throw new Error('Invalid token');
       }
 
-      // Successful login
-      setError(null);
-      alert(`Welcome, ${decodedToken.username}!`);
-    } catch (err: any) {
-      setError(err.message);
+      onLoginSuccess(data.token);
+    } catch (error: any) {
+      setError(error.message);
     }
   };
 
   return (
-    <div>
-      <h1>Login</h1>
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label htmlFor="username">Username</label>
-          <input
-            type="text"
-            id="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="password">Password</label>
-          <input
-            type="password"
-            id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        {error && <p style={{ color: "red" }}>{error}</p>}
-        <button type="submit">Login</button>
-      </form>
-    </div>
+    <form onSubmit={handleSubmit}>
+      <div>
+        <label htmlFor="email">Email:</label>
+        <input
+          type="email"
+          id="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+      </div>
+      <div>
+        <label htmlFor="password">Password:</label>
+        <input
+          type="password"
+          id="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </div>
+      {error && <div style={{ color: 'red' }}>{error}</div>}
+      <button type="submit">Login</button>
+    </form>
   );
 };
 
-export default Login;
+export default LoginForm;
