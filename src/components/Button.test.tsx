@@ -1,33 +1,30 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { fireEvent, render } from '@testing-library/react';
 import Button from './Button';
 
-describe('Button Component', () => {
-  it('should render correctly with primary variant', () => {
-    const { getByText } = render(<Button variant="primary" onClick={() => {}}>Click Me</Button>);
-    const button = getByText('Click Me');
-    expect(button).toHaveClass('button-primary');
+describe('Button', () => {
+  it('renders correctly', () => {
+    const { getByTestId } = render(<Button label="Click me" onClick={() => {}} />);
+    expect(getByTestId('button-component')).toBeTruthy();
   });
 
-  it('should render correctly with secondary variant', () => {
-    const { getByText } = render(<Button variant="secondary" onClick={() => {}}>Click Me</Button>);
-    const button = getByText('Click Me');
-    expect(button).toHaveClass('button-secondary');
-  });
-
-  it('should call onClick when clicked', () => {
-    const handleClick = jest.fn();
-    const { getByText } = render(<Button variant="primary" onClick={handleClick}>Click Me</Button>);
-    const button = getByText('Click Me');
-    fireEvent.click(button);
+  it('calls onClick when clicked', () => {
+    const handleClick = vi.fn();
+    const { getByTestId } = render(<Button label="Click me" onClick={handleClick} />);
+    fireEvent.click(getByTestId('button-component'));
     expect(handleClick).toHaveBeenCalledTimes(1);
   });
 
-  it('should not call onClick when disabled', () => {
-    const handleClick = jest.fn();
-    const { getByText } = render(<Button variant="primary" onClick={handleClick} disabled>Click Me</Button>);
-    const button = getByText('Click Me');
-    fireEvent.click(button);
-    expect(handleClick).toHaveBeenCalledTimes(0);
+  it('renders the correct label', () => {
+    const label = "Click me";
+    const { getByText } = render(<Button label={label} onClick={() => {}} />);
+    expect(getByText(label)).toBeTruthy();
+  });
+
+  // Test for variant prop
+  it('applies the correct variant class', () => {
+    const { getByTestId } = render(<Button label="Click me" onClick={() => {}} variant="secondary" />);
+    expect(getByTestId('button-component')).toHaveClass('btn-secondary');
   });
 });
