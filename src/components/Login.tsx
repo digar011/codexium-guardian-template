@@ -1,52 +1,84 @@
 import React, { useState } from 'react';
-import PropTypes from 'prop-types';
-import { Input, Button } from '@shadcn/ui';
+import jwtDecode from 'jwt-decode';
 
-interface LoginProps {
-  onLogin: (username: string, password: string) => Promise<void>;
+interface LoginProps {}
+
+interface FormState {
+  username: string;
+  password: string;
+  error: string | null;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+const Login: React.FC<LoginProps> = () => {
+  const [formState, setFormState] = useState<FormState>({
+    username: '',
+    password: '',
+    error: null
+  });
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormState({
+      ...formState,
+      [name]: value
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await onLogin(username, password);
-      setError(''); // Reset error message on successful login
-    } catch (err) {
-      // Display a generic error message to the user to avoid exposing sensitive information
-      setError('Login failed. Please try again.');
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username: formState.username,
+          password: formState.password
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Login failed');
+      }
+
+      const { token } = await response.json();
+      const decodedToken = jwtDecode<{ username: string }>(token);
+      console.log('Logged in as:', decodedToken.username);
+      setFormState({ ...formState, error: null });
+    } catch (error: any) {
+      setFormState({ ...formState, error: error.message });
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <form onSubmit={handleSubmit} className="w-full max-w-xs">
-        <Input
-          label="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          data-testid="username-input"
+    <form onSubmit={handleSubmit}>
+      <div>
+        <label htmlFor="username">Username:</label>
+        <input
+          type="text"
+          id="username"
+          name="username"
+          value={formState.username}
+          onChange={handleInputChange}
+          required
         />
-        <Input
-          label="Password"
+      </div>
+      <div>
+        <label htmlFor="password">Password:</label>
+        <input
           type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          data-testid="password-input"
+          id="password"
+          name="password"
+          value={formState.password}
+          onChange={handleInputChange}
+          required
         />
-        {error && <div className="text-red-500" data-testid="login-error">{error}</div>}
-        <Button type="submit" data-testid="login-button">Log In</Button>
-      </form>
-    </div>
+      </div>
+      {formState.error && <p style={{ color: 'red' }}>{formState.error}</p>}
+      <button type="submit">Login</button>
+    </form>
   );
-};
-
-Login.propTypes = {
-  onLogin: PropTypes.func.isRequired,
 };
 
 export default Login;

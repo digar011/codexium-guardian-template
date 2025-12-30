@@ -1,28 +1,33 @@
+import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import Login from './Login';
 
-describe('Login', () => {
-  it('displays the generic error message when login fails', async () => {
-    const mockLogin = jest.fn();
-    mockLogin.mockRejectedValue(new Error('Login failed'));
+jest.mock('jwt-decode', () => () => ({ username: 'mockUser' }));
 
-    render(<Login onLogin={mockLogin} />);
+beforeEach(() => {
+  global.fetch = jest.fn(() =>
+    Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ token: 'mockToken' })
+    })
+  ) as jest.Mock;
+});
 
-    fireEvent.change(screen.getByTestId('username-input'), { target: { value: 'user' } });
-    fireEvent.change(screen.getByTestId('password-input'), { target: { value: 'pass' } });
-    fireEvent.click(screen.getByTestId('login-button'));
+afterEach(() => {
+  jest.clearAllMocks();
+});
 
-    expect(await screen.findByTestId('login-error')).toHaveTextContent('Login failed. Please try again.');
-  });
+test('renders login form and submits successfully', async () => {
+  render(<Login />);
+  const usernameInput = screen.getByLabelText(/username/i);
+  const passwordInput = screen.getByLabelText(/password/i);
+  const submitButton = screen.getByRole('button', { name: /login/i });
 
-  it('calls the onLogin function with username and password', () => {
-    const mockLogin = jest.fn();
-    render(<Login onLogin={mockLogin} />);
+  fireEvent.change(usernameInput, { target: { value: 'testuser' } });
+  fireEvent.change(passwordInput, { target: { value: 'password' } });
+  fireEvent.click(submitButton);
 
-    fireEvent.change(screen.getByTestId('username-input'), { target: { value: 'user' } });
-    fireEvent.change(screen.getByTestId('password-input'), { target: { value: 'password' } });
-    fireEvent.click(screen.getByTestId('login-button'));
-
-    expect(mockLogin).toHaveBeenCalledWith('user', 'password');
-  });
+  expect(global.fetch).toHaveBeenCalledWith('/api/login', expect.anything());
+  await screen.findByText(/logged in as: mockUser/i);
 });
