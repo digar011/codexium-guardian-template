@@ -1,33 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, ChangeEvent, useEffect } from 'react';
+import axios from 'axios';
 
 interface SearchBarProps {
-  fetchSuggestions: (query: string) => Promise<string[]>;
+  apiUrl: string;
 }
 
-const SearchBar: React.FC<SearchBarProps> = ({ fetchSuggestions }) => {
-  const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+interface Suggestion {
+  id: number;
+  name: string;
+}
+
+const SearchBar: React.FC<SearchBarProps> = ({ apiUrl }) => {
+  const [query, setQuery] = useState<string>('');
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (query.length < 2) return;
+    if (query.length < 2) {
+      setSuggestions([]);
+      return;
+    }
 
-    const fetchResults = async () => {
+    const fetchSuggestions = async () => {
       try {
-        const results = await fetchSuggestions(query);
-        setSuggestions(results);
-        setError(null);
+        const response = await axios.get<Suggestion[]>(`${apiUrl}?query=${query}`);
+        setSuggestions(response.data);
       } catch (err) {
         setError('Failed to fetch suggestions');
-        setSuggestions([]);
       }
     };
 
-    fetchResults();
-  }, [query, fetchSuggestions]);
+    fetchSuggestions();
+  }, [query, apiUrl]);
 
-  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setQuery(event.target.value);
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value);
+    setError(null);
   };
 
   return (
@@ -35,13 +43,14 @@ const SearchBar: React.FC<SearchBarProps> = ({ fetchSuggestions }) => {
       <input
         type="text"
         value={query}
-        onChange={handleInputChange}
+        onChange={handleChange}
         placeholder="Search..."
+        aria-label="Search"
       />
-      {error && <div className="error">{error}</div>}
+      {error && <div>{error}</div>}
       <ul>
-        {suggestions.map((suggestion, index) => (
-          <li key={index}>{suggestion}</li>
+        {suggestions.map((suggestion) => (
+          <li key={suggestion.id}>{suggestion.name}</li>
         ))}
       </ul>
     </div>

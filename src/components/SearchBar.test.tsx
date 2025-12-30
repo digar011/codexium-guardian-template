@@ -1,43 +1,40 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import '@testing-library/jest-dom';
+import axios from 'axios';
 import SearchBar from './SearchBar';
 
-const mockFetchSuggestions = jest.fn((query) => {
-  if (query === 'error') {
-    return Promise.reject('API Error');
-  }
-  return Promise.resolve([`${query} suggestion 1`, `${query} suggestion 2`]);
-});
+jest.mock('axios');
 
 describe('SearchBar Component', () => {
-  beforeEach(() => {
-    mockFetchSuggestions.mockClear();
-  });
-
   it('renders input field', () => {
-    render(<SearchBar fetchSuggestions={mockFetchSuggestions} />);
-    expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument();
+    render(<SearchBar apiUrl="/api/suggestions" />);
+    const inputElement = screen.getByPlaceholderText(/search.../i);
+    expect(inputElement).toBeInTheDocument();
   });
 
   it('fetches and displays suggestions', async () => {
-    render(<SearchBar fetchSuggestions={mockFetchSuggestions} />);
-    const input = screen.getByPlaceholderText('Search...');
+    const suggestions = [{ id: 1, name: 'Suggestion 1' }, { id: 2, name: 'Suggestion 2' }];
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: suggestions });
 
-    fireEvent.change(input, { target: { value: 'test' } });
+    render(<SearchBar apiUrl="/api/suggestions" />);
+    const inputElement = screen.getByPlaceholderText(/search.../i);
+    fireEvent.change(inputElement, { target: { value: 'Sug' } });
 
-    await waitFor(() => expect(mockFetchSuggestions).toHaveBeenCalledWith('test'));
-    expect(await screen.findByText('test suggestion 1')).toBeInTheDocument();
-    expect(screen.getByText('test suggestion 2')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Suggestion 1')).toBeInTheDocument();
+      expect(screen.getByText('Suggestion 2')).toBeInTheDocument();
+    });
   });
 
-  it('handles errors gracefully', async () => {
-    render(<SearchBar fetchSuggestions={mockFetchSuggestions} />);
-    const input = screen.getByPlaceholderText('Search...');
+  it('displays error on fetch failure', async () => {
+    (axios.get as jest.Mock).mockRejectedValueOnce(new Error('Failed to fetch suggestions'));
 
-    fireEvent.change(input, { target: { value: 'error' } });
+    render(<SearchBar apiUrl="/api/suggestions" />);
+    const inputElement = screen.getByPlaceholderText(/search.../i);
+    fireEvent.change(inputElement, { target: { value: 'Sug' } });
 
-    await waitFor(() => expect(screen.getByText('Failed to fetch suggestions')).toBeInTheDocument());
-    expect(screen.queryByText('error suggestion 1')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Failed to fetch suggestions')).toBeInTheDocument();
+    });
   });
 });
