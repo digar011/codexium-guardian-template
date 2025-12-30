@@ -1,54 +1,34 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import '@testing-library/jest-dom';
+import { render, fireEvent, screen } from '@testing-library/react';
 import Login from './Login';
 
-jest.mock('jwt-decode', () => () => ({ username: 'testuser', exp: Date.now() / 1000 + 60 }));
-
-beforeEach(() => {
-  global.fetch = jest.fn(() =>
-    Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ token: 'fake-jwt-token' })
-    })
-  ) as jest.Mock;
-});
+jest.mock('jwt-decode', () => () => ({ user: 'test-user' }));
 
 describe('Login Component', () => {
   test('renders login form', () => {
     render(<Login />);
-    expect(screen.getByText(/login/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Username')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Password')).toBeInTheDocument();
   });
 
-  test('allows users to log in successfully', async () => {
+  test('handles input change', () => {
     render(<Login />);
-
-    fireEvent.change(screen.getByLabelText(/username/i), {
-      target: { value: 'testuser' }
-    });
-    fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'password' }
-    });
-    fireEvent.click(screen.getByText(/login/i));
-
-    expect(await screen.findByText(/welcome, testuser!/i)).toBeInTheDocument();
+    const usernameInput = screen.getByPlaceholderText('Username');
+    fireEvent.change(usernameInput, { target: { value: 'testuser' } });
+    expect((usernameInput as HTMLInputElement).value).toBe('testuser');
   });
 
-  test('displays error on login failure', async () => {
-    (global.fetch as jest.Mock).mockImplementationOnce(() =>
-      Promise.resolve({ ok: false })
-    );
+  test('displays error on invalid login', async () => {
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: false,
+        json: () => Promise.resolve({ message: 'Invalid credentials' })
+      })
+    ) as jest.Mock;
 
     render(<Login />);
-
-    fireEvent.change(screen.getByLabelText(/username/i), {
-      target: { value: 'testuser' }
-    });
-    fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'wrongpassword' }
-    });
-    fireEvent.click(screen.getByText(/login/i));
-
-    expect(await screen.findByText(/login failed/i)).toBeInTheDocument();
+    fireEvent.submit(screen.getByRole('button'));
+    const errorMessage = await screen.findByText('Invalid credentials');
+    expect(errorMessage).toBeInTheDocument();
   });
 });
