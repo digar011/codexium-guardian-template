@@ -1,52 +1,83 @@
-import React, { useState } from 'react';
-import PropTypes from 'prop-types';
-import { Input, Button } from '@shadcn/ui';
+import React, { useState, FormEvent } from 'react';
+import jwtDecode, { JwtPayload } from 'jwt-decode';
 
-interface LoginProps {
-  onLogin: (username: string, password: string) => Promise<void>;
+interface LoginProps {}
+
+interface FormState {
+  email: string;
+  password: string;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+interface ApiError {
+  message: string;
+}
 
-  const handleSubmit = async (e: React.FormEvent) => {
+const Login: React.FC<LoginProps> = () => {
+  const [formState, setFormState] = useState<FormState>({ email: '', password: '' });
+  const [error, setError] = useState<string | null>(null);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormState((prevState) => ({
+      ...prevState,
+      [name]: value,
+    }));
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await onLogin(username, password);
-      setError(''); // Reset error message on successful login
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formState),
+      });
+
+      if (!response.ok) {
+        const errorData: ApiError = await response.json();
+        throw new Error(errorData.message);
+      }
+
+      const { token } = await response.json();
+      const decodedToken = jwtDecode<JwtPayload>(token);
+      console.log('User authenticated:', decodedToken);
+      setError(null);
     } catch (err) {
-      // Display a generic error message to the user to avoid exposing sensitive information
-      setError('Login failed. Please try again.');
+      setError(err instanceof Error ? err.message : 'Login failed');
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <form onSubmit={handleSubmit} className="w-full max-w-xs">
-        <Input
-          label="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          data-testid="username-input"
-        />
-        <Input
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          data-testid="password-input"
-        />
-        {error && <div className="text-red-500" data-testid="login-error">{error}</div>}
-        <Button type="submit" data-testid="login-button">Log In</Button>
+    <div>
+      <h1>Login</h1>
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="email">Email:</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            value={formState.email}
+            onChange={handleChange}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="password">Password:</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            value={formState.password}
+            onChange={handleChange}
+            required
+          />
+        </div>
+        <button type="submit">Login</button>
       </form>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
     </div>
   );
-};
-
-Login.propTypes = {
-  onLogin: PropTypes.func.isRequired,
 };
 
 export default Login;

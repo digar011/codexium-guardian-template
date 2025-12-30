@@ -1,28 +1,43 @@
+import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import '@testing-library/jest-dom/extend-expect';
 import Login from './Login';
 
-describe('Login', () => {
-  it('displays the generic error message when login fails', async () => {
-    const mockLogin = jest.fn();
-    mockLogin.mockRejectedValue(new Error('Login failed'));
+jest.mock('jwt-decode', () => () => ({
+  sub: '1234567890',
+  name: 'John Doe',
+  iat: 1516239022,
+}));
 
-    render(<Login onLogin={mockLogin} />);
+const mockFetch = jest.fn();
 
-    fireEvent.change(screen.getByTestId('username-input'), { target: { value: 'user' } });
-    fireEvent.change(screen.getByTestId('password-input'), { target: { value: 'pass' } });
-    fireEvent.click(screen.getByTestId('login-button'));
+beforeEach(() => {
+  global.fetch = mockFetch;
+});
 
-    expect(await screen.findByTestId('login-error')).toHaveTextContent('Login failed. Please try again.');
+afterEach(() => {
+  jest.clearAllMocks();
+});
+
+it('renders the login form', () => {
+  render(<Login />);
+  expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+  expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /login/i })).toBeInTheDocument();
+});
+
+it('shows error message on failed login', async () => {
+  mockFetch.mockResolvedValueOnce({
+    ok: false,
+    json: async () => ({ message: 'Invalid credentials' }),
   });
 
-  it('calls the onLogin function with username and password', () => {
-    const mockLogin = jest.fn();
-    render(<Login onLogin={mockLogin} />);
+  render(<Login />);
 
-    fireEvent.change(screen.getByTestId('username-input'), { target: { value: 'user' } });
-    fireEvent.change(screen.getByTestId('password-input'), { target: { value: 'password' } });
-    fireEvent.click(screen.getByTestId('login-button'));
+  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } });
+  fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password' } });
+  fireEvent.click(screen.getByRole('button', { name: /login/i }));
 
-    expect(mockLogin).toHaveBeenCalledWith('user', 'password');
-  });
+  const errorMessage = await screen.findByText(/invalid credentials/i);
+  expect(errorMessage).toBeInTheDocument();
 });
