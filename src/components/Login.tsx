@@ -3,74 +3,77 @@ import jwtDecode from 'jwt-decode';
 
 interface LoginProps {}
 
-interface TokenPayload {
-  username: string;
+interface User {
+  email: string;
+  password: string;
+}
+
+interface JwtPayload {
+  email: string;
   exp: number;
 }
 
 const Login: React.FC<LoginProps> = () => {
-  const [username, setUsername] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
     try {
-      // Mocking a login API request
-      const response = await fetch("/api/login", {
-        method: "POST",
+      const response = await fetch('/api/login', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ email, password }),
       });
 
       if (!response.ok) {
-        throw new Error("Login failed");
+        throw new Error('Network response was not ok');
       }
 
-      const { token } = await response.json();
-      const decodedToken: TokenPayload = jwtDecode(token);
-
-      // Check if the token is expired
-      if (decodedToken.exp * 1000 < Date.now()) {
-        throw new Error("Token expired");
-      }
-
-      // Successful login
-      setError(null);
-      alert(`Welcome, ${decodedToken.username}!`);
-    } catch (err: any) {
-      setError(err.message);
+      const data = await response.json();
+      const { token } = data;
+      const decoded: JwtPayload = jwtDecode(token);
+      console.log('Logged in user:', decoded.email);
+    } catch (error) {
+      setError('Login failed. Please check your credentials and try again.');
+      console.error('Login error:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div>
-      <h1>Login</h1>
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label htmlFor="username">Username</label>
-          <input
-            type="text"
-            id="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="password">Password</label>
-          <input
-            type="password"
-            id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        {error && <p style={{ color: "red" }}>{error}</p>}
-        <button type="submit">Login</button>
-      </form>
-    </div>
+    <form onSubmit={handleSubmit}>
+      <div>
+        <label>Email:</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+      </div>
+      <div>
+        <label>Password:</label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </div>
+      {error && <div style={{ color: 'red' }}>{error}</div>}
+      <button type="submit" disabled={isLoading}>
+        {isLoading ? 'Logging in...' : 'Login'}
+      </button>
+    </form>
   );
 };
 
