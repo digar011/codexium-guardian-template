@@ -315,8 +315,8 @@ jobs:
               
               # Output
               with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                  f.write(f"branch_name={branch_name}\\n")
-                  f.write(f"files_created={','.join(files_created)}\\n")
+                  f.write(f"branch_name={branch_name}\n")
+                  f.write(f"files_created={','.join(files_created)}\n")
               
               print(f"\\n🎉 Generated {len(files_created)} files successfully!")
               
@@ -395,6 +395,5 @@ jobs:
   # =================================================
   # Neo V4 will automatically trigger via pull_request event
   # No manual trigger needed - neo-orchestrator.yml handles it
-
 
 
