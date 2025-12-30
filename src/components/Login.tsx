@@ -1,45 +1,38 @@
 import React, { useState } from 'react';
 import jwtDecode from 'jwt-decode';
 
-interface LoginProps {}
-
-interface TokenPayload {
+interface User {
   username: string;
-  exp: number;
+  password: string;
 }
 
-const Login: React.FC<LoginProps> = () => {
-  const [username, setUsername] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
+const Login: React.FC = () => {
+  const [user, setUser] = useState<User>({ username: '', password: '' });
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setUser({ ...user, [name]: value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
-      // Mocking a login API request
-      const response = await fetch("/api/login", {
-        method: "POST",
+      const response = await fetch('/api/login', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify(user),
       });
 
       if (!response.ok) {
-        throw new Error("Login failed");
+        throw new Error('Login failed');
       }
 
-      const { token } = await response.json();
-      const decodedToken: TokenPayload = jwtDecode(token);
-
-      // Check if the token is expired
-      if (decodedToken.exp * 1000 < Date.now()) {
-        throw new Error("Token expired");
-      }
-
-      // Successful login
-      setError(null);
-      alert(`Welcome, ${decodedToken.username}!`);
+      const data = await response.json();
+      const decodedToken = jwtDecode(data.token);
+      console.log('Decoded JWT:', decodedToken);
     } catch (err: any) {
       setError(err.message);
     }
@@ -48,14 +41,16 @@ const Login: React.FC<LoginProps> = () => {
   return (
     <div>
       <h1>Login</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
       <form onSubmit={handleSubmit}>
         <div>
           <label htmlFor="username">Username</label>
           <input
             type="text"
             id="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            name="username"
+            value={user.username}
+            onChange={handleInputChange}
           />
         </div>
         <div>
@@ -63,11 +58,11 @@ const Login: React.FC<LoginProps> = () => {
           <input
             type="password"
             id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            name="password"
+            value={user.password}
+            onChange={handleInputChange}
           />
         </div>
-        {error && <p style={{ color: "red" }}>{error}</p>}
         <button type="submit">Login</button>
       </form>
     </div>
