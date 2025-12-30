@@ -3,52 +3,41 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Login from './Login';
 
-jest.mock('jwt-decode', () => () => ({ username: 'testuser', exp: Date.now() / 1000 + 60 }));
+jest.mock('jwt-decode', () => jest.fn(() => ({ exp: Date.now() / 1000 + 60 }))); // Mock jwtDecode
 
 beforeEach(() => {
-  global.fetch = jest.fn(() =>
-    Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ token: 'fake-jwt-token' })
-    })
-  ) as jest.Mock;
+  fetchMock.resetMocks();
 });
 
 describe('Login Component', () => {
   test('renders login form', () => {
     render(<Login />);
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByText(/login/i)).toBeInTheDocument();
   });
 
-  test('allows users to log in successfully', async () => {
-    render(<Login />);
+  test('displays error on failed login', async () => {
+    fetchMock.mockReject(new Error('Failed to login.'));
 
-    fireEvent.change(screen.getByLabelText(/username/i), {
-      target: { value: 'testuser' }
-    });
-    fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'password' }
-    });
+    render(<Login />);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@example.com' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password' } });
     fireEvent.click(screen.getByText(/login/i));
 
-    expect(await screen.findByText(/welcome, testuser!/i)).toBeInTheDocument();
+    const errorMessage = await screen.findByText(/failed to login/i);
+    expect(errorMessage).toBeInTheDocument();
   });
 
-  test('displays error on login failure', async () => {
-    (global.fetch as jest.Mock).mockImplementationOnce(() =>
-      Promise.resolve({ ok: false })
-    );
+  test('successful login', async () => {
+    fetchMock.mockResponseOnce(JSON.stringify({ token: 'valid.jwt.token' }));
 
     render(<Login />);
-
-    fireEvent.change(screen.getByLabelText(/username/i), {
-      target: { value: 'testuser' }
-    });
-    fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'wrongpassword' }
-    });
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@example.com' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password' } });
     fireEvent.click(screen.getByText(/login/i));
 
-    expect(await screen.findByText(/login failed/i)).toBeInTheDocument();
+    const successMessage = await screen.findByText(/login successful!/i);
+    expect(successMessage).toBeInTheDocument();
   });
 });
