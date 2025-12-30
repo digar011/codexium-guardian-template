@@ -1,44 +1,29 @@
 import React from 'react';
+import PropTypes from 'prop-types';
+import { Button as ShadcnButton } from 'shadcn/ui';
 
 interface ButtonProps {
-  variant: 'primary' | 'secondary';
+  label: string;
   onClick: () => void;
-  disabled?: boolean;
-  children: React.ReactNode;
+  variant?: 'primary' | 'secondary';
 }
 
-const Button: React.FC<ButtonProps> = ({ variant, onClick, disabled = false, children }) => {
-  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (disabled) {
-      return;
-    }
-    try {
-      onClick();
-    } catch (error) {
-      console.error('Error occurred while clicking the button:', error);
-    }
-  };
-
-  const getClassNames = (): string => {
-    switch (variant) {
-      case 'primary':
-        return 'button-primary';
-      case 'secondary':
-        return 'button-secondary';
-      default:
-        return '';
-    }
-  };
-
+const Button: React.FC<ButtonProps> = ({ label, onClick, variant = 'primary' }) => {
   return (
-    <button
-      className={`button ${getClassNames()}`}
-      onClick={handleClick}
-      disabled={disabled}
+    <ShadcnButton
+      data-testid="button-component"
+      className={`btn-${variant}`}
+      onClick={onClick}
     >
-      {children}
-    </button>
+      {label}
+    </ShadcnButton>
   );
+};
+
+Button.propTypes = {
+  label: PropTypes.string.isRequired,
+  onClick: PropTypes.func.isRequired,
+  variant: PropTypes.oneOf(['primary', 'secondary']),
 };
 
 export default Button;
